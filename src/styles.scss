@@ -1,1 +1,50 @@
-/* You can add global styles to this file, and also import other style files */
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@300;400;500&display=swap');
+
+:root {
+	color-scheme: dark;
+	--bg-deep: #0b0f14;
+	--bg-ink: #0e1820;
+	--bg-veil: #0f1e2a;
+	--accent-cyan: #45e3c2;
+	--accent-sun: #f7b545;
+	--accent-ember: #ff6b4a;
+	--text-high: #f5f8fb;
+	--text-mid: #b4c2d1;
+	--text-low: #7d8c9c;
+	--border-soft: rgba(255, 255, 255, 0.08);
+	--panel-glass: rgba(10, 17, 23, 0.78);
+	--panel-shadow: 0 20px 40px rgba(0, 0, 0, 0.45);
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html,
+body {
+	margin: 0;
+	min-height: 100%;
+	font-family: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+	background: radial-gradient(circle at top, rgba(69, 227, 194, 0.08), transparent 55%),
+		radial-gradient(circle at 15% 40%, rgba(247, 181, 69, 0.08), transparent 50%),
+		linear-gradient(160deg, var(--bg-deep), var(--bg-ink) 45%, var(--bg-veil));
+	color: var(--text-high);
+}
+
+button,
+input,
+select,
+textarea {
+	font-family: inherit;
+}
+
+.sr-only {
+	border: 0;
+	clip: rect(0 0 0 0);
+	height: 1px;
+	margin: -1px;
+	overflow: hidden;
+	padding: 0;
+	position: absolute;
+	width: 1px;
+}
