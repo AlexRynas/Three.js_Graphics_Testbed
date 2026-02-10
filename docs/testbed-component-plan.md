@@ -4,16 +4,37 @@
 
 ### Feature Components (Testbed)
 - TestbedTopbar — brand/title + action buttons; inputs: status, canBenchmark; outputs: runBenchmark, exportMetrics, toggleGui
-- TestbedViewport — canvas container and overlay slots; inputs: rendererLabel, metrics, status, benchmark
-- TestbedHud — the metrics overlay panel; inputs: rendererLabel, metrics
-- TestbedStatusBar — status + benchmark progress chip; inputs: status, benchmark
+	- Template mapping: header.topbar, .brand, .top-actions
+	- Uses: PillButton (Run benchmark, Export metrics, Toggle GUI)
+- TestbedViewport — canvas container + overlays; inputs: rendererLabel, metrics, status, benchmark
+	- Template mapping: .viewport with canvas, hud, status-bar
+	- Uses: TestbedHud, TestbedStatusBar
+- TestbedHud — metrics overlay panel; inputs: rendererLabel, metrics
+	- Template mapping: .hud with repeated .hud-row items
+	- Uses: HudList (or repeated HudListRow), handles GPU n/a fallback
+- TestbedStatusBar — status text + benchmark progress chip; inputs: status, benchmark
+	- Template mapping: .status-bar with optional .status-chip
+	- Uses: PillButton or compact chip styling (if shared chip is added later)
 - TestbedSidebar — wrapper for right-side panel sections; projected content or composed children
+	- Template mapping: aside.panel with multiple section blocks
+	- Uses: Panel, SectionHeader for each section title
 - CollectionsPanel — list of collections with selection; inputs: collections, activeId; outputs: select
+	- Template mapping: Collections section with .button-grid
+	- Uses: Panel, SectionHeader, SelectButton
 - PresetsPanel — preset list + save UI; inputs: presets, presetName; outputs: apply, delete, updateName, save
+	- Template mapping: Presets section with .preset-list, .preset-row, field, and save button
+	- Uses: Panel, SectionHeader, SelectButton, IconButton, LabeledField, PillButton
 - CapabilitiesPanel — capability grid; inputs: capabilityRows
+	- Template mapping: Capabilities section with .cap-grid
+	- Uses: Panel, SectionHeader, StatGrid
 - InspectorPanel — mesh/material/texture stats; inputs: inspector
+	- Template mapping: Scene Inspector section with .inspector-grid
+	- Uses: Panel, SectionHeader, StatGrid
 - FeatureTogglesPanel — feature support list + hint; inputs: featureRows
+	- Template mapping: Feature Toggles section with .feature-list, hint text
+	- Uses: Panel, SectionHeader, HudList (or simple list styling)
 - GuiDock — lil-gui host container; input: visible
+	- Template mapping: .gui-dock host element
 
 ### Shared UI Components
 - Panel — glass card with header and content (used by sidebar sections)
@@ -27,31 +48,34 @@
 
 ## Iterations
 
-### Iteration 1: Layout Shell
+### Iteration 1: Shared UI Foundation
+- Extract Panel, SectionHeader, PillButton, SelectButton, IconButton
+- Extract LabeledField, StatGrid, HudList
+- Establish base styles and tokens for shared UI
+- Verify bindings for shared component inputs/outputs where applicable
+- Check for any errors related to the changes and fix them if any.
+
+### Iteration 2: Layout Shell
 - Create TestbedTopbar, TestbedViewport, TestbedSidebar, GuiDock
 - Wire inputs/outputs and move template sections
+- Replace raw buttons/headers with shared UI components
 - Move top-level layout styles
 - Clean up unused layout styles and verify bindings in touched areas
 - Check for any errors related to the changes and fix them if any.
 
-### Iteration 2: Panels
+### Iteration 3: Panels
 - Create CollectionsPanel and PresetsPanel
 - Create CapabilitiesPanel and InspectorPanel
 - Create FeatureTogglesPanel
+- Compose panels using Panel + SectionHeader and shared list/field controls
 - Move panel-specific styles
 - Clean up unused panel styles and verify bindings in touched areas
 - Check for any errors related to the changes and fix them if any.
 
-### Iteration 3: HUD
+### Iteration 4: HUD
 - Create TestbedHud and TestbedStatusBar
 - Hook up metrics and status bindings
+- Use HudList for consistent label/value rows
 - Move HUD-related styles
 - Clean up unused HUD styles and verify bindings in touched areas
-- Check for any errors related to the changes and fix them if any.
-
-### Iteration 4: Shared UI
-- Extract Panel, SectionHeader, and button components
-- Extract LabeledField, StatGrid, HudList
-- Replace local markup with shared components
-- Clean up unused shared styles and verify bindings in touched areas
 - Check for any errors related to the changes and fix them if any.
