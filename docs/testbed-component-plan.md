@@ -32,6 +32,7 @@
 - Wire inputs/outputs and move template sections
 - Move top-level layout styles
 - Clean up unused layout styles and verify bindings in touched areas
+- Check for any errors related to the changes and fix them if any.
 
 ### Iteration 2: Panels
 - Create CollectionsPanel and PresetsPanel
@@ -39,15 +40,18 @@
 - Create FeatureTogglesPanel
 - Move panel-specific styles
 - Clean up unused panel styles and verify bindings in touched areas
+- Check for any errors related to the changes and fix them if any.
 
 ### Iteration 3: HUD
 - Create TestbedHud and TestbedStatusBar
 - Hook up metrics and status bindings
 - Move HUD-related styles
 - Clean up unused HUD styles and verify bindings in touched areas
+- Check for any errors related to the changes and fix them if any.
 
 ### Iteration 4: Shared UI
 - Extract Panel, SectionHeader, and button components
 - Extract LabeledField, StatGrid, HudList
 - Replace local markup with shared components
 - Clean up unused shared styles and verify bindings in touched areas
+- Check for any errors related to the changes and fix them if any.
