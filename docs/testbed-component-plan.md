@@ -31,24 +31,23 @@
 - Create TestbedTopbar, TestbedViewport, TestbedSidebar, GuiDock
 - Wire inputs/outputs and move template sections
 - Move top-level layout styles
+- Clean up unused layout styles and verify bindings in touched areas
 
 ### Iteration 2: Panels
 - Create CollectionsPanel and PresetsPanel
 - Create CapabilitiesPanel and InspectorPanel
 - Create FeatureTogglesPanel
 - Move panel-specific styles
+- Clean up unused panel styles and verify bindings in touched areas
 
 ### Iteration 3: HUD
 - Create TestbedHud and TestbedStatusBar
 - Hook up metrics and status bindings
 - Move HUD-related styles
+- Clean up unused HUD styles and verify bindings in touched areas
 
 ### Iteration 4: Shared UI
 - Extract Panel, SectionHeader, and button components
 - Extract LabeledField, StatGrid, HudList
 - Replace local markup with shared components
-
-### Iteration 5: Cleanup
-- Remove dead styles and unused selectors
-- Verify template bindings and accessibility attributes
-- Validate visual parity
+- Clean up unused shared styles and verify bindings in touched areas
