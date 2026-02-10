@@ -29,7 +29,6 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { Lensflare, LensflareElement } from 'three/examples/jsm/objects/Lensflare.js';
 import { MeshBVH, acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
 import GUI from 'lil-gui';
-import Stats, { StatsProfiler } from 'stats-gl';
 import {
   CollectionManifest,
   CollectionRef,
@@ -46,8 +45,6 @@ import { CapabilitiesService } from './capabilities.service';
 import { PresetService } from './preset.service';
 
 type RendererInstance = THREE.WebGLRenderer | THREE_WEBGPU.WebGPURenderer;
-type WebGpuRendererWithDevice = THREE_WEBGPU.WebGPURenderer & { device?: GPUDevice };
-
 type StatsSample = {
   fps: number;
   cpu: number;
@@ -57,6 +54,7 @@ type StatsSample = {
 interface FrameMetrics {
   fps: number;
   minFps: number;
+  cpuMs: number;
   maxFrameTime: number;
   drawCalls: number;
   triangles: number;
@@ -69,6 +67,196 @@ interface BenchmarkState {
   progress: number;
   sampleCount: number;
   duration: number;
+}
+
+type Webgl2TimerQueryExt = {
+  TIME_ELAPSED_EXT: number;
+  GPU_DISJOINT_EXT: number;
+};
+
+type Webgl1TimerQueryExt = Webgl2TimerQueryExt & {
+  QUERY_RESULT_AVAILABLE_EXT: number;
+  QUERY_RESULT_EXT: number;
+  createQueryEXT: () => WebGLQuery | null;
+  deleteQueryEXT: (query: WebGLQuery) => void;
+  beginQueryEXT: (target: number, query: WebGLQuery) => void;
+  endQueryEXT: (target: number) => void;
+  getQueryObjectEXT: (query: WebGLQuery, pname: number) => number | boolean;
+};
+
+class WebglGpuTimer {
+  private readonly gl: WebGLRenderingContext | WebGL2RenderingContext;
+  private readonly extWebgl2: Webgl2TimerQueryExt | null;
+  private readonly extWebgl1: Webgl1TimerQueryExt | null;
+  private currentQuery: WebGLQuery | null = null;
+  private readonly pendingQueries: WebGLQuery[] = [];
+  private lastGpuMs: number | null = null;
+
+  constructor(gl: WebGLRenderingContext | WebGL2RenderingContext) {
+    this.gl = gl;
+    this.extWebgl2 =
+      gl instanceof WebGL2RenderingContext
+        ? (gl.getExtension('EXT_disjoint_timer_query_webgl2') as Webgl2TimerQueryExt | null)
+        : null;
+    this.extWebgl1 = this.extWebgl2
+      ? null
+      : (gl.getExtension('EXT_disjoint_timer_query') as Webgl1TimerQueryExt | null);
+  }
+
+  get isAvailable(): boolean {
+    return Boolean(this.extWebgl2 || this.extWebgl1);
+  }
+
+  begin(): void {
+    if (!this.isAvailable || this.currentQuery) {
+      return;
+    }
+
+    if (this.extWebgl2 && this.gl instanceof WebGL2RenderingContext) {
+      const gl2 = this.gl as WebGL2RenderingContext;
+      const query = gl2.createQuery();
+      if (!query) {
+        return;
+      }
+      this.currentQuery = query;
+      gl2.beginQuery(this.extWebgl2.TIME_ELAPSED_EXT, query);
+      return;
+    }
+
+    if (this.extWebgl1) {
+      const query = this.extWebgl1.createQueryEXT();
+      if (!query) {
+        return;
+      }
+      this.currentQuery = query;
+      this.extWebgl1.beginQueryEXT(this.extWebgl1.TIME_ELAPSED_EXT, query);
+    }
+  }
+
+  end(): void {
+    if (!this.isAvailable || !this.currentQuery) {
+      return;
+    }
+
+    if (this.extWebgl2 && this.gl instanceof WebGL2RenderingContext) {
+      const gl2 = this.gl as WebGL2RenderingContext;
+      gl2.endQuery(this.extWebgl2.TIME_ELAPSED_EXT);
+      this.pendingQueries.push(this.currentQuery);
+      this.currentQuery = null;
+      this.collect();
+      return;
+    }
+
+    if (this.extWebgl1) {
+      this.extWebgl1.endQueryEXT(this.extWebgl1.TIME_ELAPSED_EXT);
+      this.pendingQueries.push(this.currentQuery);
+      this.currentQuery = null;
+      this.collect();
+    }
+  }
+
+  getLatestMs(): number | null {
+    this.collect();
+    return this.lastGpuMs;
+  }
+
+  dispose(): void {
+    if (this.extWebgl2 && this.gl instanceof WebGL2RenderingContext) {
+      const gl2 = this.gl as WebGL2RenderingContext;
+      this.pendingQueries.forEach((query) => gl2.deleteQuery(query));
+    } else if (this.extWebgl1) {
+      this.pendingQueries.forEach((query) => this.extWebgl1?.deleteQueryEXT(query));
+    }
+    this.pendingQueries.length = 0;
+    this.currentQuery = null;
+  }
+
+  private collect(): void {
+    if (!this.isAvailable || this.pendingQueries.length === 0) {
+      return;
+    }
+
+    if (this.extWebgl2 && this.gl instanceof WebGL2RenderingContext) {
+      const gl2 = this.gl as WebGL2RenderingContext;
+      const disjoint = gl2.getParameter(this.extWebgl2.GPU_DISJOINT_EXT) as boolean;
+      for (let index = this.pendingQueries.length - 1; index >= 0; index -= 1) {
+        const query = this.pendingQueries[index];
+        const available = gl2.getQueryParameter(query, gl2.QUERY_RESULT_AVAILABLE) as boolean;
+        if (available && !disjoint) {
+          const ns = gl2.getQueryParameter(query, gl2.QUERY_RESULT) as number;
+          this.lastGpuMs = ns / 1_000_000;
+          gl2.deleteQuery(query);
+          this.pendingQueries.splice(index, 1);
+        }
+      }
+      return;
+    }
+
+    if (this.extWebgl1) {
+      const disjoint = this.gl.getParameter(this.extWebgl1.GPU_DISJOINT_EXT) as boolean;
+      for (let index = this.pendingQueries.length - 1; index >= 0; index -= 1) {
+        const query = this.pendingQueries[index];
+        const available = this.extWebgl1.getQueryObjectEXT(
+          query,
+          this.extWebgl1.QUERY_RESULT_AVAILABLE_EXT,
+        ) as boolean;
+        if (available && !disjoint) {
+          const ns = this.extWebgl1.getQueryObjectEXT(
+            query,
+            this.extWebgl1.QUERY_RESULT_EXT,
+          ) as number;
+          this.lastGpuMs = ns / 1_000_000;
+          this.extWebgl1.deleteQueryEXT(query);
+          this.pendingQueries.splice(index, 1);
+        }
+      }
+    }
+  }
+}
+
+class FrameStatsTracker {
+  private lastFrameTime = performance.now();
+  private cpuStart = 0;
+  private lastSample: StatsSample = { fps: 0, cpu: 0, gpu: null };
+  private gpuTimer: WebglGpuTimer | null = null;
+
+  init(renderer: RendererInstance): void {
+    this.dispose();
+    this.lastFrameTime = performance.now();
+    if (renderer instanceof THREE.WebGLRenderer) {
+      const timer = new WebglGpuTimer(renderer.getContext());
+      this.gpuTimer = timer.isAvailable ? timer : null;
+    }
+  }
+
+  beginFrame(): void {
+    this.cpuStart = performance.now();
+    this.gpuTimer?.begin();
+  }
+
+  endFrame(): StatsSample {
+    this.gpuTimer?.end();
+    const now = performance.now();
+    const delta = now - this.lastFrameTime;
+    this.lastFrameTime = now;
+
+    const fps = delta > 0 ? 1000 / delta : this.lastSample.fps;
+    const cpu = Math.max(0, now - this.cpuStart);
+    const gpu = this.gpuTimer?.getLatestMs() ?? null;
+
+    this.lastSample = {
+      fps,
+      cpu,
+      gpu,
+    };
+
+    return this.lastSample;
+  }
+
+  dispose(): void {
+    this.gpuTimer?.dispose();
+    this.gpuTimer = null;
+  }
 }
 
 @Component({
@@ -108,8 +296,7 @@ export class TestbedComponent implements AfterViewInit {
   private controls: OrbitControls | null = null;
   private activeThree: typeof THREE = THREE;
   private clock: THREE.Clock | null = null;
-  private stats: Stats | null = null;
-  private statsProfiler: StatsProfiler | null = null;
+  private frameStats: FrameStatsTracker | null = null;
   private latestStats: StatsSample | null = null;
   private gui: GUI | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -142,6 +329,7 @@ export class TestbedComponent implements AfterViewInit {
   readonly metrics = signal<FrameMetrics>({
     fps: 0,
     minFps: 0,
+    cpuMs: 0,
     maxFrameTime: 0,
     drawCalls: 0,
     triangles: 0,
@@ -308,7 +496,7 @@ export class TestbedComponent implements AfterViewInit {
     this.initScene();
     this.initControls();
     this.initComposer();
-    await this.initStats();
+    this.initFrameStats();
     this.setupResizeObserver();
     this.buildGui();
 
@@ -473,64 +661,16 @@ export class TestbedComponent implements AfterViewInit {
     this.applyPostProcessing(this.settings());
   }
 
-  private async initStats(): Promise<void> {
-    const stats = new Stats({ trackGPU: true, minimal: true, mode: 0 });
-    if (this.renderer) {
-      stats.init(this.renderer);
-    }
-    stats.dom.classList.add('stats-panel');
-    this.viewportRef().nativeElement.appendChild(stats.dom);
-    this.stats = stats;
-    await this.initStatsProfiler();
-  }
-
-  private async initStatsProfiler(): Promise<void> {
-    const THREE = this.activeThree;
+  private initFrameStats(): void {
     if (!this.renderer) {
       return;
     }
 
-    const profiler = new StatsProfiler({ trackGPU: true });
-    let initialized = false;
-
-    if (this.renderer instanceof THREE.WebGLRenderer) {
-      await profiler.init(this.renderer.getContext());
-      initialized = true;
-    } else if ('device' in (this.renderer as WebGpuRendererWithDevice)) {
-      const device = (this.renderer as WebGpuRendererWithDevice).device;
-      if (device) {
-        await profiler.init(device);
-        initialized = true;
-      }
+    if (!this.frameStats) {
+      this.frameStats = new FrameStatsTracker();
     }
 
-    this.statsProfiler = initialized ? profiler : null;
-  }
-
-  private readStatsSample(): StatsSample | null {
-    const profilerData = this.statsProfiler?.getData() as
-      | { fps?: number; cpu?: number; gpu?: number }
-      | null
-      | undefined;
-    const statsWithData = this.stats as {
-      getData?: () => { fps?: number; cpu?: number; gpu?: number };
-    } | null;
-    const statsData = statsWithData?.getData ? statsWithData.getData() : null;
-    const data = profilerData ?? statsData;
-
-    if (!data) {
-      return null;
-    }
-
-    const fps = Number.isFinite(data.fps) ? (data.fps as number) : 0;
-    const cpu = Number.isFinite(data.cpu) ? (data.cpu as number) : 0;
-    const gpuValue = Number.isFinite(data.gpu) ? (data.gpu as number) : null;
-
-    return {
-      fps,
-      cpu,
-      gpu: gpuValue,
-    };
+    this.frameStats.init(this.renderer);
   }
 
   private setupResizeObserver(): void {
@@ -803,10 +943,7 @@ export class TestbedComponent implements AfterViewInit {
     const canvas = this.canvasRef().nativeElement;
     this.setThreeModule(mode);
     await this.createRenderer(canvas, mode);
-    if (this.stats && this.renderer) {
-      this.stats.init(this.renderer);
-    }
-    await this.initStatsProfiler();
+    this.initFrameStats();
     this.initComposer();
     this.updateSize();
     const active = this.collections().find((item) => item.id === this.activeCollectionId());
@@ -1299,8 +1436,8 @@ export class TestbedComponent implements AfterViewInit {
     }
 
     const delta = this.clock?.getDelta() ?? 0;
+    this.frameStats?.beginFrame();
     this.controls?.update();
-    this.statsProfiler?.begin();
     if (this.benchmark().active) {
       this.updateBenchmarkPath(time);
     }
@@ -1311,10 +1448,7 @@ export class TestbedComponent implements AfterViewInit {
       this.renderer.render(this.scene, this.camera);
     }
 
-    this.statsProfiler?.end();
-    this.statsProfiler?.update();
-    this.stats?.update();
-    this.latestStats = this.readStatsSample();
+    this.latestStats = this.frameStats ? this.frameStats.endFrame() : null;
     this.updateMetrics();
 
     if (this.benchmark().active) {
@@ -1341,6 +1475,7 @@ export class TestbedComponent implements AfterViewInit {
     this.metrics.set({
       fps: Math.round(fps),
       minFps: current.minFps === 0 ? Math.round(fps) : Math.min(current.minFps, Math.round(fps)),
+      cpuMs: Math.round(cpuMs * 100) / 100,
       maxFrameTime: Math.max(current.maxFrameTime, cpuMs),
       drawCalls: info.render.calls,
       triangles: info.render.triangles,
@@ -1411,7 +1546,6 @@ export class TestbedComponent implements AfterViewInit {
     const info = this.renderer?.info;
 
     return {
-      statsProvider: 'stats-gl',
       renderer: this.rendererLabel(),
       preset: this.presetName(),
       avgFps: Math.round(avgFps),
@@ -1438,7 +1572,8 @@ export class TestbedComponent implements AfterViewInit {
       this.renderer.dispose();
     }
     this.renderer = null;
-    this.statsProfiler = null;
+    this.frameStats?.dispose();
+    this.frameStats = null;
     this.latestStats = null;
   }
 
@@ -1450,11 +1585,8 @@ export class TestbedComponent implements AfterViewInit {
     this.composer = null;
     this.scene = null;
     this.camera = null;
-    if (this.stats) {
-      this.stats.dom.remove();
-      this.stats.dispose();
-    }
-    this.stats = null;
+    this.frameStats?.dispose();
+    this.frameStats = null;
     this.gui?.destroy();
     this.gui = null;
     this.resizeObserver?.disconnect();

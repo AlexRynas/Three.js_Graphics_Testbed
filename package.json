@@ -31,7 +31,6 @@
     "@angular/router": "^21.1.0",
     "lil-gui": "^0.21.0",
     "rxjs": "~7.8.0",
-    "stats-gl": "^4.0.2",
     "three": "^0.182.0",
     "three-mesh-bvh": "^0.9.8",
     "tslib": "^2.3.0"

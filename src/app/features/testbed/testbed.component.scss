@@ -320,13 +320,6 @@
   display: none;
 }
 
-.stats-panel {
-  position: absolute !important;
-  right: 1rem;
-  top: 1rem;
-  z-index: 20;
-}
-
 @media (max-width: 1100px) {
   .layout {
     grid-template-columns: 1fr;

@@ -32,6 +32,10 @@
           <span class="hud-value">{{ metrics().triangles }}</span>
         </div>
         <div class="hud-row">
+          <span class="hud-label">CPU ms</span>
+          <span class="hud-value">{{ metrics().cpuMs }}</span>
+        </div>
+        <div class="hud-row">
           <span class="hud-label">GPU ms</span>
           @if (metrics().gpuMs !== null) {
             <span class="hud-value">{{ metrics().gpuMs }}</span>
@@ -43,7 +47,9 @@
       <div class="status-bar">
         <span>{{ status() }}</span>
         @if (benchmark().active) {
-          <span class="status-chip">Benchmark {{ (benchmark().progress * 100) | number: '1.0-0' }}%</span>
+          <span class="status-chip"
+            >Benchmark {{ benchmark().progress * 100 | number: '1.0-0' }}%</span
+          >
         }
       </div>
     </div>
@@ -73,7 +79,12 @@
               <button class="select-button" type="button" (click)="applyPreset(preset)">
                 <span>{{ preset.name }}</span>
               </button>
-              <button class="icon-button" type="button" (click)="deletePreset(preset)" aria-label="Delete preset">
+              <button
+                class="icon-button"
+                type="button"
+                (click)="deletePreset(preset)"
+                aria-label="Delete preset"
+              >
                 ✕
               </button>
             </div>
