@@ -3,7 +3,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
   computed,
   effect,
   inject,
@@ -43,14 +42,16 @@ import {
 import { AssetService } from './asset.service';
 import { CapabilitiesService } from './capabilities.service';
 import { PresetService } from './preset.service';
-import { HudListComponent } from '../../shared/ui/hud-list/hud-list.component';
 import { IconButtonComponent } from '../../shared/ui/icon-button/icon-button.component';
 import { LabeledFieldComponent } from '../../shared/ui/labeled-field/labeled-field.component';
-import { PanelComponent } from '../../shared/ui/panel/panel.component';
 import { PillButtonComponent } from '../../shared/ui/pill-button/pill-button.component';
 import { SectionHeaderComponent } from '../../shared/ui/section-header/section-header.component';
 import { SelectButtonComponent } from '../../shared/ui/select-button/select-button.component';
 import { StatGridComponent } from '../../shared/ui/stat-grid/stat-grid.component';
+import { GuiDockComponent } from './components/gui-dock/gui-dock.component';
+import { SidebarComponent } from './components/sidebar/sidebar.component';
+import { TopbarComponent } from './components/topbar/topbar.component';
+import { ViewportComponent } from './components/viewport/viewport.component';
 
 type RendererInstance = THREE.WebGLRenderer | THREE_WEBGPU.WebGPURenderer;
 type StatsSample = {
@@ -274,23 +275,24 @@ class FrameStatsTracker {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
-    HudListComponent,
     IconButtonComponent,
     LabeledFieldComponent,
-    PanelComponent,
     PillButtonComponent,
     SectionHeaderComponent,
     SelectButtonComponent,
     StatGridComponent,
+    GuiDockComponent,
+    SidebarComponent,
+    TopbarComponent,
+    ViewportComponent,
   ],
   host: {
     class: 'testbed-host',
   },
 })
 export class TestbedComponent implements AfterViewInit {
-  readonly canvasRef = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
-  readonly viewportRef = viewChild.required<ElementRef<HTMLDivElement>>('viewport');
-  readonly guiHostRef = viewChild.required<ElementRef<HTMLDivElement>>('guiHost');
+  readonly viewportShell = viewChild.required(ViewportComponent);
+  readonly guiDock = viewChild.required(GuiDockComponent);
 
   private readonly assetService = inject(AssetService);
   private readonly capabilitiesService = inject(CapabilitiesService);
@@ -389,18 +391,6 @@ export class TestbedComponent implements AfterViewInit {
       { key: 'textures', label: 'Textures', value: inspector.textureCount },
       { key: 'lod', label: 'LOD Nodes', value: inspector.lodCount },
       { key: 'bvh', label: 'BVH Meshes', value: inspector.bvhCount },
-    ];
-  });
-
-  readonly hudRows = computed(() => {
-    const metrics = this.metrics();
-    return [
-      { key: 'renderer', label: 'Renderer', value: this.rendererLabel() },
-      { key: 'fps', label: 'FPS', value: metrics.fps },
-      { key: 'drawCalls', label: 'Draw Calls', value: metrics.drawCalls },
-      { key: 'triangles', label: 'Triangles', value: metrics.triangles },
-      { key: 'cpu', label: 'CPU ms', value: metrics.cpuMs },
-      { key: 'gpu', label: 'GPU ms', value: metrics.gpuMs ?? 'n/a' },
     ];
   });
 
@@ -526,7 +516,7 @@ export class TestbedComponent implements AfterViewInit {
     this.collections.set(collectionList);
     this.presetService.setInitialPresets(this.assetService.buildDefaultPresets());
 
-    const canvas = this.canvasRef().nativeElement;
+    const canvas = this.viewportShell().canvas;
     const rendererMode = this.resolveRendererMode(this.settings().rendererMode);
     this.settings.update((current) => ({ ...current, rendererMode }));
     this.setThreeModule(rendererMode);
@@ -647,7 +637,7 @@ export class TestbedComponent implements AfterViewInit {
       return;
     }
 
-    const controls = new OrbitControls(this.camera, this.canvasRef().nativeElement);
+    const controls = new OrbitControls(this.camera, this.viewportShell().canvas);
     controls.enableDamping = true;
     controls.autoRotate = this.sceneSettings().autoRotate;
     controls.autoRotateSpeed = 0.5;
@@ -717,7 +707,7 @@ export class TestbedComponent implements AfterViewInit {
   private setupResizeObserver(): void {
     this.resizeObserver?.disconnect();
     this.resizeObserver = new ResizeObserver(() => this.updateSize());
-    this.resizeObserver.observe(this.viewportRef().nativeElement);
+    this.resizeObserver.observe(this.viewportShell().viewport);
     this.updateSize();
   }
 
@@ -726,7 +716,7 @@ export class TestbedComponent implements AfterViewInit {
       return;
     }
 
-    const { clientWidth, clientHeight } = this.viewportRef().nativeElement;
+    const { clientWidth, clientHeight } = this.viewportShell().viewport;
     if (clientWidth === 0 || clientHeight === 0) {
       return;
     }
@@ -759,7 +749,7 @@ export class TestbedComponent implements AfterViewInit {
   }
 
   private getViewportSize(): { width: number; height: number } {
-    const { clientWidth, clientHeight } = this.viewportRef().nativeElement;
+    const { clientWidth, clientHeight } = this.viewportShell().viewport;
     return {
       width: Math.max(1, clientWidth),
       height: Math.max(1, clientHeight),
@@ -769,7 +759,7 @@ export class TestbedComponent implements AfterViewInit {
   private buildGui(): void {
     this.gui?.destroy();
     const gui = new GUI({ width: 320, autoPlace: false, title: 'Graphics Control Deck' });
-    this.guiHostRef().nativeElement.appendChild(gui.domElement);
+    this.guiDock().element.appendChild(gui.domElement);
     this.gui = gui;
 
     const settingsState: RenderingSettings = { ...this.settings() };
@@ -981,7 +971,7 @@ export class TestbedComponent implements AfterViewInit {
   }
 
   private async reloadRenderer(mode: 'webgl' | 'webgpu'): Promise<void> {
-    const canvas = this.canvasRef().nativeElement;
+    const canvas = this.viewportShell().canvas;
     this.setThreeModule(mode);
     await this.createRenderer(canvas, mode);
     this.initFrameStats();

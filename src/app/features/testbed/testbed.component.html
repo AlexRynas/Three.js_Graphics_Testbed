@@ -1,33 +1,20 @@
 <section class="testbed">
-  <header class="topbar">
-    <div class="brand">
-      <span class="title">Graphics Testbed</span>
-      <span class="subtitle">Angular 21 + Three.js</span>
-    </div>
-    <div class="top-actions">
-      <button appPillButton type="button" (click)="runBenchmark()">Run benchmark</button>
-      <button appPillButton type="button" variant="ghost" (click)="exportMetrics()">
-        Export metrics
-      </button>
-      <button appPillButton type="button" variant="ghost" (click)="toggleGui()">Toggle GUI</button>
-    </div>
-  </header>
+  <app-topbar
+    [status]="status()"
+    (runBenchmark)="runBenchmark()"
+    (exportMetrics)="exportMetrics()"
+    (toggleGui)="toggleGui()"
+  ></app-topbar>
 
   <main class="layout">
-    <div class="viewport" #viewport>
-      <canvas #canvas class="render-canvas" aria-label="3D render viewport"></canvas>
-      <app-hud-list class="hud" [rows]="hudRows()"></app-hud-list>
-      <div class="status-bar">
-        <span>{{ status() }}</span>
-        @if (benchmark().active) {
-          <span class="status-chip"
-            >Benchmark {{ benchmark().progress * 100 | number: '1.0-0' }}%</span
-          >
-        }
-      </div>
-    </div>
+    <app-viewport
+      [rendererLabel]="rendererLabel()"
+      [metrics]="metrics()"
+      [status]="status()"
+      [benchmark]="benchmark()"
+    ></app-viewport>
 
-    <aside appPanel>
+    <app-sidebar>
       <section class="panel-section">
         <h3 appSectionHeader>Collections</h3>
         <div class="button-grid">
@@ -99,8 +86,8 @@
         </div>
         <p class="hint">Use the lil-gui panel for detailed sliders and quality controls.</p>
       </section>
-    </aside>
+    </app-sidebar>
   </main>
 
-  <div class="gui-dock" #guiHost [class.hidden]="!guiVisible()"></div>
+  <div appGuiDock [visible]="guiVisible()"></div>
 </section>

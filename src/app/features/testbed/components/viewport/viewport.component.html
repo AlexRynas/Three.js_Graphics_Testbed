@@ -1,0 +1,12 @@
+<div class="viewport" #viewport>
+  <canvas #canvas class="render-canvas" aria-label="3D render viewport"></canvas>
+  <app-hud-list class="hud" [rows]="hudRows()"></app-hud-list>
+  <div class="status-bar">
+    <span>{{ status() }}</span>
+    @if (benchmark().active) {
+      <span class="status-chip"
+        >Benchmark {{ benchmark().progress * 100 | number: '1.0-0' }}%</span
+      >
+    }
+  </div>
+</div>

@@ -1,0 +1,25 @@
+<header
+  class="topbar"
+  [attr.aria-label]="status() ? 'Renderer status: ' + status() : 'Renderer controls'"
+>
+  <div class="brand">
+    <span class="title">Graphics Testbed</span>
+    <span class="subtitle">Angular 21 + Three.js</span>
+  </div>
+  <div class="top-actions">
+    <button
+      appPillButton
+      type="button"
+      (click)="runBenchmark.emit()"
+      [disabled]="!canBenchmark()"
+    >
+      Run benchmark
+    </button>
+    <button appPillButton type="button" variant="ghost" (click)="exportMetrics.emit()">
+      Export metrics
+    </button>
+    <button appPillButton type="button" variant="ghost" (click)="toggleGui.emit()">
+      Toggle GUI
+    </button>
+  </div>
+</header>
