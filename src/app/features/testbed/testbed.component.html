@@ -5,45 +5,18 @@
       <span class="subtitle">Angular 21 + Three.js</span>
     </div>
     <div class="top-actions">
-      <button class="pill" type="button" (click)="runBenchmark()">Run benchmark</button>
-      <button class="pill ghost" type="button" (click)="exportMetrics()">Export metrics</button>
-      <button class="pill ghost" type="button" (click)="toggleGui()">Toggle GUI</button>
+      <button appPillButton type="button" (click)="runBenchmark()">Run benchmark</button>
+      <button appPillButton type="button" variant="ghost" (click)="exportMetrics()">
+        Export metrics
+      </button>
+      <button appPillButton type="button" variant="ghost" (click)="toggleGui()">Toggle GUI</button>
     </div>
   </header>
 
   <main class="layout">
     <div class="viewport" #viewport>
       <canvas #canvas class="render-canvas" aria-label="3D render viewport"></canvas>
-      <div class="hud">
-        <div class="hud-row">
-          <span class="hud-label">Renderer</span>
-          <span class="hud-value">{{ rendererLabel() }}</span>
-        </div>
-        <div class="hud-row">
-          <span class="hud-label">FPS</span>
-          <span class="hud-value">{{ metrics().fps }}</span>
-        </div>
-        <div class="hud-row">
-          <span class="hud-label">Draw Calls</span>
-          <span class="hud-value">{{ metrics().drawCalls }}</span>
-        </div>
-        <div class="hud-row">
-          <span class="hud-label">Triangles</span>
-          <span class="hud-value">{{ metrics().triangles }}</span>
-        </div>
-        <div class="hud-row">
-          <span class="hud-label">CPU ms</span>
-          <span class="hud-value">{{ metrics().cpuMs }}</span>
-        </div>
-        <div class="hud-row">
-          <span class="hud-label">GPU ms</span>
-          @if (metrics().gpuMs !== null) {
-            <span class="hud-value">{{ metrics().gpuMs }}</span>
-          } @else {
-            <span class="hud-value">n/a</span>
-          }
-        </div>
-      </div>
+      <app-hud-list class="hud" [rows]="hudRows()"></app-hud-list>
       <div class="status-bar">
         <span>{{ status() }}</span>
         @if (benchmark().active) {
@@ -54,16 +27,16 @@
       </div>
     </div>
 
-    <aside class="panel">
+    <aside appPanel>
       <section class="panel-section">
-        <h3>Collections</h3>
+        <h3 appSectionHeader>Collections</h3>
         <div class="button-grid">
           @for (collection of collections(); track collection.id) {
             <button
-              class="select-button"
+              appSelectButton
               type="button"
               (click)="selectCollection(collection.id)"
-              [class.active]="collection.id === activeCollectionId()"
+              [active]="collection.id === activeCollectionId()"
             >
               <span>{{ collection.displayName }}</span>
             </button>
@@ -72,15 +45,15 @@
       </section>
 
       <section class="panel-section">
-        <h3>Presets</h3>
+        <h3 appSectionHeader>Presets</h3>
         <div class="preset-list">
           @for (preset of presets(); track preset.name) {
             <div class="preset-row">
-              <button class="select-button" type="button" (click)="applyPreset(preset)">
+              <button appSelectButton type="button" (click)="applyPreset(preset)">
                 <span>{{ preset.name }}</span>
               </button>
               <button
-                class="icon-button"
+                appIconButton
                 type="button"
                 (click)="deletePreset(preset)"
                 aria-label="Delete preset"
@@ -90,8 +63,7 @@
             </div>
           }
         </div>
-        <label class="field">
-          <span class="field-label">Preset name</span>
+        <label appLabeledField label="Preset name">
           <input
             class="field-input"
             type="text"
@@ -100,49 +72,21 @@
             placeholder="Name your preset"
           />
         </label>
-        <button class="pill" type="button" (click)="savePreset()">Save preset</button>
+        <button appPillButton type="button" (click)="savePreset()">Save preset</button>
       </section>
 
       <section class="panel-section">
-        <h3>Capabilities</h3>
-        <div class="cap-grid">
-          @for (cap of capabilityRows(); track cap.key) {
-            <div class="cap-card">
-              <span class="cap-label">{{ cap.label }}</span>
-              <span class="cap-value">{{ cap.value }}</span>
-            </div>
-          }
-        </div>
+        <h3 appSectionHeader>Capabilities</h3>
+        <app-stat-grid [rows]="capabilityRows()"></app-stat-grid>
       </section>
 
       <section class="panel-section">
-        <h3>Scene Inspector</h3>
-        <div class="inspector-grid">
-          <div class="inspector-item">
-            <span class="cap-label">Meshes</span>
-            <span class="cap-value">{{ inspector().meshCount }}</span>
-          </div>
-          <div class="inspector-item">
-            <span class="cap-label">Materials</span>
-            <span class="cap-value">{{ inspector().materialCount }}</span>
-          </div>
-          <div class="inspector-item">
-            <span class="cap-label">Textures</span>
-            <span class="cap-value">{{ inspector().textureCount }}</span>
-          </div>
-          <div class="inspector-item">
-            <span class="cap-label">LOD Nodes</span>
-            <span class="cap-value">{{ inspector().lodCount }}</span>
-          </div>
-          <div class="inspector-item">
-            <span class="cap-label">BVH Meshes</span>
-            <span class="cap-value">{{ inspector().bvhCount }}</span>
-          </div>
-        </div>
+        <h3 appSectionHeader>Scene Inspector</h3>
+        <app-stat-grid [rows]="inspectorRows()"></app-stat-grid>
       </section>
 
       <section class="panel-section">
-        <h3>Feature Toggles</h3>
+        <h3 appSectionHeader>Feature Toggles</h3>
         <div class="feature-list">
           @for (feature of featureRows(); track feature.key) {
             <div class="feature-row" [class.unsupported]="!feature.supported">

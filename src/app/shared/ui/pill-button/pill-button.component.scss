@@ -1,0 +1,20 @@
+:host {
+  background: linear-gradient(120deg, rgba(69, 227, 194, 0.95), rgba(247, 181, 69, 0.95));
+  border: none;
+  color: #0b0f14;
+  padding: 0.55rem 1.1rem;
+  border-radius: 999px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+:host(.ghost) {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-high);
+}
+
+:host(:hover) {
+  transform: translateY(-1px);
+}

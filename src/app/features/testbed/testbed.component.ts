@@ -43,6 +43,14 @@ import {
 import { AssetService } from './asset.service';
 import { CapabilitiesService } from './capabilities.service';
 import { PresetService } from './preset.service';
+import { HudListComponent } from '../../shared/ui/hud-list/hud-list.component';
+import { IconButtonComponent } from '../../shared/ui/icon-button/icon-button.component';
+import { LabeledFieldComponent } from '../../shared/ui/labeled-field/labeled-field.component';
+import { PanelComponent } from '../../shared/ui/panel/panel.component';
+import { PillButtonComponent } from '../../shared/ui/pill-button/pill-button.component';
+import { SectionHeaderComponent } from '../../shared/ui/section-header/section-header.component';
+import { SelectButtonComponent } from '../../shared/ui/select-button/select-button.component';
+import { StatGridComponent } from '../../shared/ui/stat-grid/stat-grid.component';
 
 type RendererInstance = THREE.WebGLRenderer | THREE_WEBGPU.WebGPURenderer;
 type StatsSample = {
@@ -264,7 +272,17 @@ class FrameStatsTracker {
   templateUrl: './testbed.component.html',
   styleUrl: './testbed.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule],
+  imports: [
+    CommonModule,
+    HudListComponent,
+    IconButtonComponent,
+    LabeledFieldComponent,
+    PanelComponent,
+    PillButtonComponent,
+    SectionHeaderComponent,
+    SelectButtonComponent,
+    StatGridComponent,
+  ],
   host: {
     class: 'testbed-host',
   },
@@ -360,6 +378,29 @@ export class TestbedComponent implements AfterViewInit {
         value: caps.compressedTextures.length > 0 ? caps.compressedTextures.join(', ') : 'None',
       },
       { key: 'gpuTimer', label: 'GPU Timer', value: caps.gpuTimerQuery ? 'Yes' : 'No' },
+    ];
+  });
+
+  readonly inspectorRows = computed(() => {
+    const inspector = this.inspector();
+    return [
+      { key: 'meshes', label: 'Meshes', value: inspector.meshCount },
+      { key: 'materials', label: 'Materials', value: inspector.materialCount },
+      { key: 'textures', label: 'Textures', value: inspector.textureCount },
+      { key: 'lod', label: 'LOD Nodes', value: inspector.lodCount },
+      { key: 'bvh', label: 'BVH Meshes', value: inspector.bvhCount },
+    ];
+  });
+
+  readonly hudRows = computed(() => {
+    const metrics = this.metrics();
+    return [
+      { key: 'renderer', label: 'Renderer', value: this.rendererLabel() },
+      { key: 'fps', label: 'FPS', value: metrics.fps },
+      { key: 'drawCalls', label: 'Draw Calls', value: metrics.drawCalls },
+      { key: 'triangles', label: 'Triangles', value: metrics.triangles },
+      { key: 'cpu', label: 'CPU ms', value: metrics.cpuMs },
+      { key: 'gpu', label: 'GPU ms', value: metrics.gpuMs ?? 'n/a' },
     ];
   });
 

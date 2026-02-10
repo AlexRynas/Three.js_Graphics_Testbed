@@ -1,0 +1,19 @@
+:host {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.hud-row {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  align-items: baseline;
+}
+
+.hud-label {
+  color: var(--text-low);
+}
+
+.hud-value {
+  font-weight: 600;
+}

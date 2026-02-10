@@ -1,0 +1,26 @@
+:host {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+}
+
+.stat-card {
+  padding: 0.6rem 0.75rem;
+  border-radius: 12px;
+  background: rgba(11, 18, 25, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  color: var(--text-low);
+}
+
+.stat-value {
+  font-size: 0.85rem;
+  color: var(--text-high);
+  font-weight: 600;
+}
