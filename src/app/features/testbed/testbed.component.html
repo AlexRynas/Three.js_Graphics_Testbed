@@ -16,6 +16,7 @@
         [settings]="settings()"
         [sceneSettings]="sceneSettings()"
         [capabilities]="capabilitySummary()"
+        [renderingSupport]="renderingSupport()"
         (renderingUpdated)="updateRenderingSetting($event)"
         (sceneUpdated)="updateSceneSetting($event)"
       ></app-settings-dock>
@@ -45,6 +46,7 @@
       <app-feature-toggles-panel
         [settings]="settings()"
         [capabilities]="capabilitySummary()"
+        [renderingSupport]="renderingSupport()"
       ></app-feature-toggles-panel>
     </app-sidebar>
   </main>

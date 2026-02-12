@@ -2,6 +2,27 @@ export type RendererMode = 'webgl' | 'webgpu';
 export type AntiAliasingMode = 'none' | 'msaa' | 'fxaa' | 'smaa' | 'taa';
 export type TextureFiltering = 'linear' | 'trilinear' | 'anisotropic';
 export type QualityLevel = 'low' | 'medium' | 'high';
+export type RenderingControlKey =
+  | 'msaaSamples'
+  | 'smaaQuality'
+  | 'taaSamples'
+  | 'ssaoEnabled'
+  | 'ssrEnabled'
+  | 'ssaoRadius'
+  | 'ssaoQuality'
+  | 'depthOfField'
+  | 'dofFocus'
+  | 'dofAperture'
+  | 'dofMaxBlur'
+  | 'chromaticAberration'
+  | 'vignette'
+  | 'lensFlares'
+  | 'filmGrain';
+
+export interface RenderingSupport {
+  antialiasingModes: Record<AntiAliasingMode, boolean>;
+  controls: Record<RenderingControlKey, boolean>;
+}
 
 export interface RenderingSettings {
   rendererMode: RendererMode;

@@ -1,25 +1,40 @@
 import { Injectable } from '@angular/core';
-import * as THREE from 'three';
-import * as THREE_WEBGPU from 'three/webgpu';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { Lensflare, LensflareElement } from 'three/examples/jsm/objects/Lensflare.js';
+import {
+  Lensflare as WebGlLensflare,
+  LensflareElement as WebGlLensflareElement,
+} from 'three/examples/jsm/objects/Lensflare.js';
+import {
+  LensflareElement as WebGpuLensflareElement,
+  LensflareMesh,
+} from 'three/examples/jsm/objects/LensflareMesh.js';
 
+import { RendererMode } from './controls.model';
 import { RendererInstance } from './frame-stats-tracker';
+import {
+  DirectionalLightInstance,
+  SceneInstance,
+  TextureInstance,
+  ThreeModule,
+} from './testbed-runtime.service';
+
+export type LensflareInstance = WebGlLensflare | LensflareMesh;
 
 @Injectable({ providedIn: 'root' })
 export class LightingEffectsService {
   applyEnvironment(
-    scene: THREE.Scene | null,
+    scene: SceneInstance | null,
     renderer: RendererInstance | null,
-    threeModule: typeof THREE,
-    hdrTexture: THREE.Texture | null,
+    threeModule: ThreeModule,
+    mode: RendererMode,
+    hdrTexture: TextureInstance | null,
   ): void {
     const THREE = threeModule;
-    if (!scene || !(renderer instanceof THREE.WebGLRenderer)) {
+    if (!scene || !renderer || mode !== 'webgl' || !('getContext' in renderer)) {
       return;
     }
 
-    const pmremGenerator = new THREE.PMREMGenerator(renderer as THREE.WebGLRenderer);
+    const pmremGenerator = new THREE.PMREMGenerator(renderer as never);
     pmremGenerator.compileEquirectangularShader();
 
     if (hdrTexture) {
@@ -37,21 +52,43 @@ export class LightingEffectsService {
   }
 
   syncLensFlares(
-    primaryLight: THREE.DirectionalLight | null,
-    currentLensflare: Lensflare | null,
+    primaryLight: DirectionalLightInstance | null,
+    currentLensflare: LensflareInstance | null,
     enabled: boolean,
-    threeModule: typeof THREE,
-  ): Lensflare | null {
+    threeModule: ThreeModule,
+    mode: RendererMode,
+  ): LensflareInstance | null {
     if (!primaryLight) {
       return currentLensflare;
     }
 
+    const needsWebGpu = mode === 'webgpu';
+    const hasWebGpuFlare = Boolean(currentLensflare && 'isLensflareMesh' in currentLensflare);
+    if (currentLensflare && hasWebGpuFlare !== needsWebGpu) {
+      primaryLight.remove(currentLensflare);
+      if ('dispose' in currentLensflare) {
+        currentLensflare.dispose();
+      }
+      currentLensflare = null;
+    }
+
     if (enabled && !currentLensflare) {
-      const flare = new Lensflare();
-      flare.addElement(new LensflareElement(this.createFlareTexture('#f7b545', threeModule), 96, 0));
-      flare.addElement(
-        new LensflareElement(this.createFlareTexture('#45e3c2', threeModule), 128, 0.4),
-      );
+      const flare = mode === 'webgpu' ? new LensflareMesh() : new WebGlLensflare();
+      if (mode === 'webgpu') {
+        flare.addElement(
+          new WebGpuLensflareElement(this.createFlareTexture('#f7b545', threeModule), 96, 0),
+        );
+        flare.addElement(
+          new WebGpuLensflareElement(this.createFlareTexture('#45e3c2', threeModule), 128, 0.4),
+        );
+      } else {
+        flare.addElement(
+          new WebGlLensflareElement(this.createFlareTexture('#f7b545', threeModule), 96, 0),
+        );
+        flare.addElement(
+          new WebGlLensflareElement(this.createFlareTexture('#45e3c2', threeModule), 128, 0.4),
+        );
+      }
       primaryLight.add(flare);
       return flare;
     }
@@ -67,7 +104,7 @@ export class LightingEffectsService {
     return currentLensflare;
   }
 
-  private createFlareTexture(color: string, threeModule: typeof THREE): THREE.Texture {
+  private createFlareTexture(color: string, threeModule: ThreeModule): TextureInstance {
     const THREE = threeModule;
     const size = 128;
     const canvas = document.createElement('canvas');

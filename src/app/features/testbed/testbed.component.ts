@@ -67,6 +67,7 @@ export class TestbedComponent implements AfterViewInit {
   readonly metrics = this.facade.metrics;
   readonly benchmark = this.facade.benchmark;
   readonly capabilitySummary = this.facade.capabilitySummary;
+  readonly renderingSupport = this.facade.renderingSupport;
   readonly presets = this.facade.presets;
 
   async ngAfterViewInit(): Promise<void> {

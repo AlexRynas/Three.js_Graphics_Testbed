@@ -1,6 +1,11 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
-import { CapabilitySummary, FeatureSupport, RenderingSettings } from '../../../controls.model';
+import {
+  CapabilitySummary,
+  FeatureSupport,
+  RenderingSettings,
+  RenderingSupport,
+} from '../../../controls.model';
 import { PanelComponent } from '../../../../../shared/ui/panel/panel.component';
 import { SectionHeaderComponent } from '../../../../../shared/ui/section-header/section-header.component';
 
@@ -14,27 +19,28 @@ import { SectionHeaderComponent } from '../../../../../shared/ui/section-header/
 export class FeatureTogglesPanelComponent {
   readonly settings = input.required<RenderingSettings>();
   readonly capabilities = input.required<CapabilitySummary>();
+  readonly renderingSupport = input.required<RenderingSupport>();
 
   readonly features = computed<FeatureSupport[]>(() => {
     const caps = this.capabilities();
-    const isWebGpu = this.settings().rendererMode === 'webgpu';
+    const support = this.renderingSupport();
 
     return [
-      { key: 'msaa', label: 'MSAA', supported: caps.webgl2 && !isWebGpu },
-      { key: 'fxaa', label: 'FXAA', supported: !isWebGpu },
-      { key: 'smaa', label: 'SMAA', supported: !isWebGpu },
-      { key: 'taa', label: 'TAA', supported: !isWebGpu },
-      { key: 'ssao', label: 'SSAO', supported: !isWebGpu },
-      { key: 'ssr', label: 'SSR', supported: false, detail: 'WebGPU SSR pending' },
+      { key: 'msaa', label: 'MSAA', supported: caps.webgl2 && support.antialiasingModes.msaa },
+      { key: 'fxaa', label: 'FXAA', supported: support.antialiasingModes.fxaa },
+      { key: 'smaa', label: 'SMAA', supported: support.antialiasingModes.smaa },
+      { key: 'taa', label: 'TAA', supported: support.antialiasingModes.taa },
+      { key: 'ssao', label: 'SSAO', supported: support.controls.ssaoEnabled },
+      { key: 'ssr', label: 'SSR', supported: support.controls.ssrEnabled },
       { key: 'gi', label: 'Global Illumination', supported: false },
       { key: 'ray', label: 'Ray Tracing', supported: false },
       { key: 'path', label: 'Path Tracing', supported: false },
-      { key: 'dof', label: 'Depth of Field', supported: !isWebGpu },
+      { key: 'dof', label: 'Depth of Field', supported: support.controls.depthOfField },
       { key: 'vol', label: 'Volumetric Lighting', supported: false },
-      { key: 'lens', label: 'Lens Flares', supported: true },
-      { key: 'vignette', label: 'Vignette', supported: true },
-      { key: 'chromatic', label: 'Chromatic Aberration', supported: !isWebGpu },
-      { key: 'film', label: 'Film Grain', supported: !isWebGpu },
+      { key: 'lens', label: 'Lens Flares', supported: support.controls.lensFlares },
+      { key: 'vignette', label: 'Vignette', supported: support.controls.vignette },
+      { key: 'chromatic', label: 'Chromatic Aberration', supported: support.controls.chromaticAberration },
+      { key: 'film', label: 'Film Grain', supported: support.controls.filmGrain },
     ];
   });
 }

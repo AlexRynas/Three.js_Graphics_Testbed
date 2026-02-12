@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import * as THREE from 'three';
 import * as THREE_WEBGPU from 'three/webgpu';
+import { metalness, mrt, normalView, output, pass, velocity } from 'three/tsl';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
@@ -14,8 +15,22 @@ import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { RGBShiftShader } from 'three/examples/jsm/shaders/RGBShiftShader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-import { CapabilitySummary, RenderingSettings } from './controls.model';
+import { CapabilitySummary, RenderingSettings, RendererMode } from './controls.model';
 import { RendererInstance } from './frame-stats-tracker';
+
+export type ThreeModule = typeof THREE | typeof THREE_WEBGPU;
+
+export type SceneInstance = THREE.Scene | THREE_WEBGPU.Scene;
+export type CameraInstance = THREE.PerspectiveCamera | THREE_WEBGPU.PerspectiveCamera;
+export type GroupInstance = THREE.Group | THREE_WEBGPU.Group;
+export type DirectionalLightInstance = THREE.DirectionalLight | THREE_WEBGPU.DirectionalLight;
+export type TextureInstance = THREE.Texture | THREE_WEBGPU.Texture;
+
+export type WebGpuPostBundle = {
+  postProcessing: THREE_WEBGPU.PostProcessing;
+  scenePass: ReturnType<typeof pass>;
+  camera: THREE.PerspectiveCamera;
+};
 
 export type ComposerBundle = {
   composer: EffectComposer | null;
@@ -28,45 +43,56 @@ export type ComposerBundle = {
   filmPass: FilmPass | null;
   vignettePass: ShaderPass | null;
   chromaticPass: ShaderPass | null;
+  webgpu: WebGpuPostBundle | null;
 };
 
-type RendererBuildResult = {
-  renderer: RendererInstance;
-  rendererLabel: string;
-  usingMsaa: boolean;
-  currentMode: 'webgl' | 'webgpu';
-  threeModule: typeof THREE;
-};
+type RendererBuildResult =
+  | {
+      renderer: THREE.WebGLRenderer;
+      rendererLabel: 'WebGL';
+      usingMsaa: boolean;
+      currentMode: 'webgl';
+      threeModule: typeof THREE;
+    }
+  | {
+      renderer: THREE_WEBGPU.WebGPURenderer;
+      rendererLabel: 'WebGPU';
+      usingMsaa: false;
+      currentMode: 'webgpu';
+      threeModule: typeof THREE_WEBGPU;
+    };
 
 @Injectable({ providedIn: 'root' })
 export class TestbedRuntimeService {
   resolveRendererMode(
     requested: RenderingSettings['rendererMode'],
     capabilities: CapabilitySummary,
-  ): 'webgl' | 'webgpu' {
+  ): RendererMode {
     if (requested === 'webgpu' && !capabilities.webgpu) {
       return 'webgl';
     }
     return requested;
   }
 
-  getThreeModule(mode: 'webgl' | 'webgpu'): typeof THREE {
-    return mode === 'webgpu' ? (THREE_WEBGPU as unknown as typeof THREE) : THREE;
+  getThreeModule(mode: 'webgl'): typeof THREE;
+  getThreeModule(mode: 'webgpu'): typeof THREE_WEBGPU;
+  getThreeModule(mode: RendererMode): ThreeModule {
+    return mode === 'webgpu' ? THREE_WEBGPU : THREE;
   }
 
   async createRenderer(
     canvas: HTMLCanvasElement,
-    mode: 'webgl' | 'webgpu',
+    mode: RendererMode,
     settings: RenderingSettings,
   ): Promise<RendererBuildResult> {
-    const threeModule = this.getThreeModule(mode);
     const hasWebGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
 
     if (mode === 'webgpu' && hasWebGpu) {
-      const renderer = new THREE_WEBGPU.WebGPURenderer({ canvas, antialias: false });
+      const threeModule = this.getThreeModule('webgpu');
+      const renderer = new threeModule.WebGPURenderer({ canvas, antialias: false });
       await renderer.init();
       renderer.setPixelRatio(window.devicePixelRatio || 1);
-      renderer.outputColorSpace = THREE_WEBGPU.SRGBColorSpace;
+      renderer.outputColorSpace = threeModule.SRGBColorSpace;
 
       return {
         renderer,
@@ -77,17 +103,17 @@ export class TestbedRuntimeService {
       };
     }
 
-    const THREE = threeModule;
+    const threeModule = this.getThreeModule('webgl');
     const msaaEnabled = settings.antialiasing === 'msaa';
-    const renderer = new THREE.WebGLRenderer({
+    const renderer = new threeModule.WebGLRenderer({
       canvas,
       antialias: msaaEnabled,
       powerPreference: 'high-performance',
     });
     renderer.setPixelRatio(window.devicePixelRatio || 1);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.outputColorSpace = threeModule.SRGBColorSpace;
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = threeModule.PCFSoftShadowMap;
 
     return {
       renderer,
@@ -98,25 +124,24 @@ export class TestbedRuntimeService {
     };
   }
 
-  createScene(threeModule: typeof THREE): {
-    scene: THREE.Scene;
-    camera: THREE.PerspectiveCamera;
-    primaryLight: THREE.DirectionalLight;
+  createScene(threeModule: ThreeModule): {
+    scene: SceneInstance;
+    camera: CameraInstance;
+    primaryLight: DirectionalLightInstance;
   } {
-    const THREE = threeModule;
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#0b1117');
+    const scene = new threeModule.Scene();
+    scene.background = new threeModule.Color('#0b1117');
 
-    const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200);
+    const camera = new threeModule.PerspectiveCamera(55, 1, 0.1, 200);
     camera.position.set(5, 4.5, 8);
 
-    const grid = new THREE.GridHelper(40, 40, 0x1b3b3b, 0x10222c);
+    const grid = new threeModule.GridHelper(40, 40, 0x1b3b3b, 0x10222c);
     grid.position.y = -0.01;
     scene.add(grid);
 
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(12, 64),
-      new THREE.MeshStandardMaterial({
+    const floor = new threeModule.Mesh(
+      new threeModule.CircleGeometry(12, 64),
+      new threeModule.MeshStandardMaterial({
         color: 0x0f1a22,
         metalness: 0.1,
         roughness: 0.7,
@@ -126,10 +151,10 @@ export class TestbedRuntimeService {
     floor.receiveShadow = true;
     scene.add(floor);
 
-    const ambient = new THREE.AmbientLight(0x9fb3c8, 0.35);
+    const ambient = new threeModule.AmbientLight(0x9fb3c8, 0.35);
     scene.add(ambient);
 
-    const primaryLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    const primaryLight = new threeModule.DirectionalLight(0xffffff, 1.2);
     primaryLight.position.set(6, 8, 4);
     primaryLight.castShadow = true;
     primaryLight.shadow.mapSize.set(2048, 2048);
@@ -137,7 +162,7 @@ export class TestbedRuntimeService {
     primaryLight.shadow.camera.far = 40;
     scene.add(primaryLight);
 
-    const rimLight = new THREE.PointLight(0x45e3c2, 0.9, 40);
+    const rimLight = new threeModule.PointLight(0x45e3c2, 0.9, 40);
     rimLight.position.set(-5, 4, -6);
     scene.add(rimLight);
 
@@ -149,7 +174,7 @@ export class TestbedRuntimeService {
   }
 
   createControls(
-    camera: THREE.PerspectiveCamera,
+    camera: CameraInstance,
     canvas: HTMLCanvasElement,
     autoRotate: boolean,
   ): OrbitControls {
@@ -162,44 +187,42 @@ export class TestbedRuntimeService {
 
   createComposer(
     renderer: RendererInstance | null,
-    scene: THREE.Scene | null,
-    camera: THREE.PerspectiveCamera | null,
-    threeModule: typeof THREE,
+    scene: SceneInstance | null,
+    camera: CameraInstance | null,
+    mode: RendererMode,
     settings: RenderingSettings,
   ): ComposerBundle {
-    const THREE = threeModule;
     if (!renderer || !scene || !camera) {
+      return this.createEmptyComposerBundle();
+    }
+
+    if (mode === 'webgpu' && renderer instanceof THREE_WEBGPU.WebGPURenderer) {
+      const scenePass = pass(scene, camera);
+      scenePass.setMRT(
+        mrt({
+          output,
+          normal: normalView,
+          velocity,
+          metalness,
+        }),
+      );
+
+      const postProcessing = new THREE_WEBGPU.PostProcessing(renderer, scenePass.getTextureNode('output'));
       return {
-        composer: null,
-        renderPass: null,
-        fxaaPass: null,
-        smaaPass: null,
-        taaPass: null,
-        ssaoPass: null,
-        dofPass: null,
-        filmPass: null,
-        vignettePass: null,
-        chromaticPass: null,
+        ...this.createEmptyComposerBundle(),
+        webgpu: {
+          postProcessing,
+          scenePass,
+          camera,
+        },
       };
     }
 
     if (!(renderer instanceof THREE.WebGLRenderer)) {
-      return {
-        composer: null,
-        renderPass: null,
-        fxaaPass: null,
-        smaaPass: null,
-        taaPass: null,
-        ssaoPass: null,
-        dofPass: null,
-        filmPass: null,
-        vignettePass: null,
-        chromaticPass: null,
-      };
+      return this.createEmptyComposerBundle();
     }
 
-    const webglRenderer = renderer as THREE.WebGLRenderer;
-    const composer = new EffectComposer(webglRenderer);
+    const composer = new EffectComposer(renderer);
     const renderPass = new RenderPass(scene, camera);
     composer.addPass(renderPass);
 
@@ -242,6 +265,23 @@ export class TestbedRuntimeService {
       filmPass,
       vignettePass,
       chromaticPass,
+      webgpu: null,
+    };
+  }
+
+  createEmptyComposerBundle(): ComposerBundle {
+    return {
+      composer: null,
+      renderPass: null,
+      fxaaPass: null,
+      smaaPass: null,
+      taaPass: null,
+      ssaoPass: null,
+      dofPass: null,
+      filmPass: null,
+      vignettePass: null,
+      chromaticPass: null,
+      webgpu: null,
     };
   }
 
@@ -254,11 +294,16 @@ export class TestbedRuntimeService {
   }
 
   updateComposerSize(bundle: ComposerBundle, viewport: HTMLElement): void {
+    const { width, height } = this.getViewportSize(viewport);
+
+    if (bundle.webgpu) {
+      bundle.webgpu.scenePass.setSize(width, height);
+    }
+
     if (!bundle.composer) {
       return;
     }
 
-    const { width, height } = this.getViewportSize(viewport);
     bundle.composer.setSize(width, height);
 
     if (bundle.fxaaPass) {
@@ -276,9 +321,10 @@ export class TestbedRuntimeService {
 
   updateSize(
     renderer: RendererInstance | null,
-    camera: THREE.PerspectiveCamera | null,
+    camera: CameraInstance | null,
     viewport: HTMLElement,
     bundle: ComposerBundle,
+    mode: RendererMode,
   ): void {
     if (!renderer || !camera) {
       return;
@@ -291,7 +337,12 @@ export class TestbedRuntimeService {
 
     camera.aspect = clientWidth / clientHeight;
     camera.updateProjectionMatrix();
+
     renderer.setSize(clientWidth, clientHeight, false);
     this.updateComposerSize(bundle, viewport);
+
+    if (mode === 'webgpu' && bundle.webgpu) {
+      bundle.webgpu.postProcessing.needsUpdate = true;
+    }
   }
 }

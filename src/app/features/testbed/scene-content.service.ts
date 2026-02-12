@@ -1,21 +1,21 @@
 import { Injectable, inject } from '@angular/core';
-import * as THREE from 'three';
 
 import { AssetService } from './asset.service';
 import { CollectionManifest, CollectionRef, SceneSettings } from './controls.model';
+import { GroupInstance, SceneInstance, TextureInstance, ThreeModule } from './testbed-runtime.service';
 
 type LoadCollectionParams = {
   collection: CollectionRef;
-  scene: THREE.Scene | null;
-  threeModule: typeof THREE;
+  scene: SceneInstance | null;
+  threeModule: ThreeModule;
   sceneSettings: SceneSettings;
-  activeGroup: THREE.Group | null;
-  applyEnvironment: (hdrTexture: THREE.Texture | null) => void;
+  activeGroup: GroupInstance | null;
+  applyEnvironment: (hdrTexture: TextureInstance | null) => void;
 };
 
 type LoadCollectionResult = {
   manifest: CollectionManifest | null;
-  activeGroup: THREE.Group | null;
+  activeGroup: GroupInstance | null;
   procedural: boolean;
 };
 
@@ -24,21 +24,21 @@ export class SceneContentService {
   private readonly assetService = inject(AssetService);
 
   clearActiveGroup(
-    scene: THREE.Scene | null,
-    activeGroup: THREE.Group | null,
-    threeModule: typeof THREE,
-  ): THREE.Group | null {
+    scene: SceneInstance | null,
+    activeGroup: GroupInstance | null,
+    threeModule: ThreeModule,
+  ): GroupInstance | null {
     const THREE = threeModule;
     if (!scene || !activeGroup) {
       return null;
     }
 
     scene.remove(activeGroup);
-    activeGroup.traverse((object: THREE.Object3D) => {
+    activeGroup.traverse((object) => {
       if (object instanceof THREE.Mesh) {
         object.geometry.dispose();
         if (Array.isArray(object.material)) {
-          object.material.forEach((material: THREE.Material) => material.dispose());
+          object.material.forEach((material) => material.dispose());
         } else {
           object.material.dispose();
         }
@@ -78,7 +78,7 @@ export class SceneContentService {
     if (manifest.environment) {
       try {
         const hdr = await this.assetService.loadHdr(manifest.environment);
-        params.applyEnvironment(hdr as THREE.Texture);
+        params.applyEnvironment(hdr as TextureInstance);
       } catch {
         params.applyEnvironment(null);
       }
@@ -100,8 +100,8 @@ export class SceneContentService {
 
   private async loadLod(
     lods: string[],
-    group: THREE.Group,
-    threeModule: typeof THREE,
+    group: GroupInstance,
+    threeModule: ThreeModule,
     sceneSettings: SceneSettings,
   ): Promise<void> {
     const THREE = threeModule;
@@ -119,16 +119,16 @@ export class SceneContentService {
 
   private async loadLodLevel(
     url: string,
-    lod: THREE.LOD,
+    lod: InstanceType<ThreeModule['LOD']>,
     distance: number,
-    threeModule: typeof THREE,
+    threeModule: ThreeModule,
     sceneSettings: SceneSettings,
   ): Promise<void> {
     const THREE = threeModule;
     try {
-      const gltf = (await this.assetService.loadGltf(url)) as { scene: THREE.Group };
+      const gltf = (await this.assetService.loadGltf(url)) as { scene: GroupInstance };
       const scene = gltf.scene;
-      scene.traverse((object: THREE.Object3D) => {
+      scene.traverse((object) => {
         if (object instanceof THREE.Mesh) {
           object.castShadow = true;
           object.receiveShadow = true;
@@ -142,7 +142,7 @@ export class SceneContentService {
     }
   }
 
-  private buildProceduralScene(scene: THREE.Scene, threeModule: typeof THREE): THREE.Group {
+  private buildProceduralScene(scene: SceneInstance, threeModule: ThreeModule): GroupInstance {
     const THREE = threeModule;
     const group = new THREE.Group();
     scene.add(group);

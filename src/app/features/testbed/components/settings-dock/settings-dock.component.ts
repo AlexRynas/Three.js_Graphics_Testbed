@@ -4,8 +4,10 @@ import {
   AntiAliasingMode,
   CapabilitySummary,
   QualityLevel,
+  RenderingControlKey,
   RendererMode,
   RenderingSettings,
+  RenderingSupport,
   SceneSettings,
   TextureFiltering,
 } from '../../controls.model';
@@ -40,6 +42,7 @@ export class SettingsDockComponent {
   readonly settings = input.required<RenderingSettings>();
   readonly sceneSettings = input.required<SceneSettings>();
   readonly capabilities = input.required<CapabilitySummary>();
+  readonly renderingSupport = input.required<RenderingSupport>();
 
   readonly renderingUpdated = output<RenderingSettingUpdate>();
   readonly sceneUpdated = output<SceneSettingUpdate>();
@@ -119,6 +122,7 @@ export class SettingsDockComponent {
   updateRenderingBoolean(
     key:
       | 'ssaoEnabled'
+      | 'ssrEnabled'
       | 'depthOfField'
       | 'chromaticAberration'
       | 'vignette'
@@ -141,5 +145,13 @@ export class SettingsDockComponent {
 
   private emitScene<K extends keyof SceneSettings>(key: K, value: SceneSettings[K]): void {
     this.sceneUpdated.emit({ key, value });
+  }
+
+  protected isAntialiasingSupported(mode: AntiAliasingMode): boolean {
+    return this.renderingSupport().antialiasingModes[mode];
+  }
+
+  protected isControlSupported(key: RenderingControlKey): boolean {
+    return this.renderingSupport().controls[key];
   }
 }

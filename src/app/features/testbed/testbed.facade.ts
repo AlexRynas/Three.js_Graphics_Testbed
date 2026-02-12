@@ -1,20 +1,11 @@
-import { DestroyRef, Injectable, effect, inject, signal } from '@angular/core';
-import * as THREE from 'three';
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
-import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
-import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
-import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
-import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
+import { DestroyRef, Injectable, computed, effect, inject, signal } from '@angular/core';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { Lensflare } from 'three/examples/jsm/objects/Lensflare.js';
 
 import {
   CollectionRef,
   InspectorSnapshot,
   Preset,
+  RenderingSupport,
   RenderingSettings,
   SceneSettings,
   defaultRenderingSettings,
@@ -25,13 +16,22 @@ import { BenchmarkService } from './benchmark.service';
 import { CapabilitiesService } from './capabilities.service';
 import { FrameStatsTracker, RendererInstance } from './frame-stats-tracker';
 import { InspectorService } from './inspector.service';
-import { LightingEffectsService } from './lighting-effects.service';
+import { LensflareInstance, LightingEffectsService } from './lighting-effects.service';
 import { PresetService } from './preset.service';
 import { RenderingSettingsService } from './rendering-settings.service';
 import { SceneContentService } from './scene-content.service';
 import { SceneOptimizationService } from './scene-optimization.service';
 import { StatsSample } from './metrics.model';
-import { TestbedRuntimeService } from './testbed-runtime.service';
+import {
+  CameraInstance,
+  ComposerBundle,
+  DirectionalLightInstance,
+  GroupInstance,
+  SceneInstance,
+  TestbedRuntimeService,
+  TextureInstance,
+  ThreeModule,
+} from './testbed-runtime.service';
 import { ViewportComponent } from './components/viewport/viewport.component';
 
 @Injectable()
@@ -48,28 +48,19 @@ export class TestbedFacade {
   private readonly runtimeService = inject(TestbedRuntimeService);
 
   private renderer: RendererInstance | null = null;
-  private composer: EffectComposer | null = null;
-  private renderPass: RenderPass | null = null;
-  private fxaaPass: ShaderPass | null = null;
-  private smaaPass: SMAAPass | null = null;
-  private taaPass: TAARenderPass | null = null;
-  private ssaoPass: SSAOPass | null = null;
-  private dofPass: BokehPass | null = null;
-  private filmPass: FilmPass | null = null;
-  private vignettePass: ShaderPass | null = null;
-  private chromaticPass: ShaderPass | null = null;
+  private composerBundle: ComposerBundle;
 
-  private scene: THREE.Scene | null = null;
-  private camera: THREE.PerspectiveCamera | null = null;
+  private scene: SceneInstance | null = null;
+  private camera: CameraInstance | null = null;
   private controls: OrbitControls | null = null;
-  private activeThree: typeof THREE = THREE;
-  private clock: THREE.Clock | null = null;
+  private activeThree: ThreeModule;
+  private clock: InstanceType<ThreeModule['Clock']> | null = null;
   private frameStats: FrameStatsTracker | null = null;
   private latestStats: StatsSample | null = null;
   private resizeObserver: ResizeObserver | null = null;
-  private activeGroup: THREE.Group | null = null;
-  private primaryLight: THREE.DirectionalLight | null = null;
-  private lensflare: Lensflare | null = null;
+  private activeGroup: GroupInstance | null = null;
+  private primaryLight: DirectionalLightInstance | null = null;
+  private lensflare: LensflareInstance | null = null;
   private usingMsaa = true;
   private currentMode: 'webgl' | 'webgpu' = 'webgl';
 
@@ -95,8 +86,15 @@ export class TestbedFacade {
 
   readonly capabilitySummary = this.capabilitiesService.capabilities;
   readonly presets = this.presetService.presets;
+  readonly renderingSupport = computed<RenderingSupport>(() => {
+    const mode = this.resolveRendererMode(this.settings().rendererMode);
+    return this.renderingSettingsService.getAvailability(mode);
+  });
 
   constructor() {
+    this.activeThree = this.runtimeService.getThreeModule('webgl');
+    this.composerBundle = this.runtimeService.createEmptyComposerBundle();
+
     effect(() => {
       const settings = this.settings();
       const sceneSettings = this.sceneSettings();
@@ -104,10 +102,7 @@ export class TestbedFacade {
     });
   }
 
-  async afterViewInit(
-    viewportShell: ViewportComponent,
-    destroyRef: DestroyRef,
-  ): Promise<void> {
+  async afterViewInit(viewportShell: ViewportComponent, destroyRef: DestroyRef): Promise<void> {
     this.viewportShellRef = viewportShell;
 
     await this.capabilitiesService.detect();
@@ -241,7 +236,10 @@ export class TestbedFacade {
   }
 
   private setThreeModule(mode: 'webgl' | 'webgpu'): void {
-    this.activeThree = this.runtimeService.getThreeModule(mode);
+    this.activeThree =
+      mode === 'webgpu'
+        ? this.runtimeService.getThreeModule('webgpu')
+        : this.runtimeService.getThreeModule('webgl');
   }
 
   private async createRenderer(canvas: HTMLCanvasElement, mode: 'webgl' | 'webgpu'): Promise<void> {
@@ -277,39 +275,19 @@ export class TestbedFacade {
   }
 
   private initComposer(): void {
-    const bundle = this.runtimeService.createComposer(
+    this.composerBundle = this.runtimeService.createComposer(
       this.renderer,
       this.scene,
       this.camera,
-      this.activeThree,
+      this.currentMode,
       this.settings(),
     );
-    this.composer = bundle.composer;
-    this.renderPass = bundle.renderPass;
-    this.fxaaPass = bundle.fxaaPass;
-    this.smaaPass = bundle.smaaPass;
-    this.taaPass = bundle.taaPass;
-    this.ssaoPass = bundle.ssaoPass;
-    this.dofPass = bundle.dofPass;
-    this.filmPass = bundle.filmPass;
-    this.vignettePass = bundle.vignettePass;
-    this.chromaticPass = bundle.chromaticPass;
 
     this.updateComposerSize();
     this.renderingSettingsService.applyPostProcessing(
-      {
-        composer: this.composer,
-        fxaaPass: this.fxaaPass,
-        smaaPass: this.smaaPass,
-        taaPass: this.taaPass,
-        ssaoPass: this.ssaoPass,
-        dofPass: this.dofPass,
-        filmPass: this.filmPass,
-        vignettePass: this.vignettePass,
-        chromaticPass: this.chromaticPass,
-      },
+      this.composerBundle,
       this.settings(),
-      this.settings().rendererMode,
+      this.currentMode,
       this.getViewportSize(),
     );
   }
@@ -323,7 +301,7 @@ export class TestbedFacade {
       this.frameStats = new FrameStatsTracker();
     }
 
-    this.frameStats.init(this.renderer);
+    this.frameStats.init(this.renderer, this.currentMode);
   }
 
   private setupResizeObserver(): void {
@@ -344,18 +322,13 @@ export class TestbedFacade {
       return;
     }
 
-    this.runtimeService.updateSize(this.renderer, this.camera, viewportShell.viewport, {
-      composer: this.composer,
-      renderPass: this.renderPass,
-      fxaaPass: this.fxaaPass,
-      smaaPass: this.smaaPass,
-      taaPass: this.taaPass,
-      ssaoPass: this.ssaoPass,
-      dofPass: this.dofPass,
-      filmPass: this.filmPass,
-      vignettePass: this.vignettePass,
-      chromaticPass: this.chromaticPass,
-    });
+    this.runtimeService.updateSize(
+      this.renderer,
+      this.camera,
+      viewportShell.viewport,
+      this.composerBundle,
+      this.currentMode,
+    );
   }
 
   private updateComposerSize(): void {
@@ -364,21 +337,7 @@ export class TestbedFacade {
       return;
     }
 
-    this.runtimeService.updateComposerSize(
-      {
-        composer: this.composer,
-        renderPass: this.renderPass,
-        fxaaPass: this.fxaaPass,
-        smaaPass: this.smaaPass,
-        taaPass: this.taaPass,
-        ssaoPass: this.ssaoPass,
-        dofPass: this.dofPass,
-        filmPass: this.filmPass,
-        vignettePass: this.vignettePass,
-        chromaticPass: this.chromaticPass,
-      },
-      viewportShell.viewport,
-    );
+    this.runtimeService.updateComposerSize(this.composerBundle, viewportShell.viewport);
   }
 
   private getViewportSize(): { width: number; height: number } {
@@ -418,21 +377,15 @@ export class TestbedFacade {
       this.activeThree,
       sceneSettings.environmentIntensity,
     );
-    this.sceneOptimizationService.updateLodBias(this.scene, this.activeThree, sceneSettings.lodBias);
+    this.sceneOptimizationService.updateLodBias(
+      this.scene,
+      this.activeThree,
+      sceneSettings.lodBias,
+    );
     this.renderingSettingsService.applyPostProcessing(
-      {
-        composer: this.composer,
-        fxaaPass: this.fxaaPass,
-        smaaPass: this.smaaPass,
-        taaPass: this.taaPass,
-        ssaoPass: this.ssaoPass,
-        dofPass: this.dofPass,
-        filmPass: this.filmPass,
-        vignettePass: this.vignettePass,
-        chromaticPass: this.chromaticPass,
-      },
+      this.composerBundle,
       settings,
-      this.settings().rendererMode,
+      this.currentMode,
       this.getViewportSize(),
     );
     this.renderingSettingsService.applyShadowSettings(this.renderer, settings);
@@ -444,12 +397,14 @@ export class TestbedFacade {
       settings,
       this.capabilitySummary(),
     );
-    if (this.sceneOptimizationService.applyBvh(this.scene, this.activeThree, sceneSettings.bvhEnabled)) {
+    if (
+      this.sceneOptimizationService.applyBvh(this.scene, this.activeThree, sceneSettings.bvhEnabled)
+    ) {
       this.refreshInspector();
     }
     const unsupported = this.renderingSettingsService.getUnsupportedLabel(
       settings,
-      this.settings().rendererMode,
+      this.currentMode,
       this.rendererLabel(),
     );
     if (unsupported) {
@@ -470,11 +425,32 @@ export class TestbedFacade {
       return;
     }
 
+    const backendChanged = mode !== this.currentMode;
+    if (backendChanged) {
+      this.activeGroup = this.sceneContentService.clearActiveGroup(
+        this.scene,
+        this.activeGroup,
+        this.activeThree,
+      );
+    }
+
+    let canvas = viewportShell.canvas;
+    if (backendChanged) {
+      canvas = viewportShell.resetCanvas();
+      this.controls?.dispose();
+      this.controls = null;
+    }
+
     this.setThreeModule(mode);
-    await this.createRenderer(viewportShell.canvas, mode);
+    await this.createRenderer(canvas, mode);
+    if (backendChanged) {
+      this.initControls();
+    }
+    this.applyLensFlares(this.settings());
     this.initFrameStats();
     this.initComposer();
     this.updateSize();
+    this.startLoop();
     const active = this.collections().find((item) => item.id === this.activeCollectionId());
     if (active) {
       await this.loadCollection(active);
@@ -494,11 +470,12 @@ export class TestbedFacade {
     this.controls.autoRotate = sceneSettings.autoRotate;
   }
 
-  private applyEnvironment(hdrTexture: THREE.Texture | null): void {
+  private applyEnvironment(hdrTexture: TextureInstance | null): void {
     this.lightingEffectsService.applyEnvironment(
       this.scene,
       this.renderer,
       this.activeThree,
+      this.currentMode,
       hdrTexture,
     );
   }
@@ -509,6 +486,7 @@ export class TestbedFacade {
       this.lensflare,
       settings.lensFlares,
       this.activeThree,
+      this.currentMode,
     );
   }
 
@@ -564,8 +542,10 @@ export class TestbedFacade {
       this.updateBenchmarkPath(time);
     }
 
-    if (this.composer) {
-      this.composer.render(delta);
+    if (this.composerBundle.webgpu) {
+      this.composerBundle.webgpu.postProcessing.render();
+    } else if (this.composerBundle.composer) {
+      this.composerBundle.composer.render(delta);
     } else {
       this.renderer.render(this.scene, this.camera);
     }
@@ -651,7 +631,7 @@ export class TestbedFacade {
     );
     this.controls?.dispose();
     this.controls = null;
-    this.composer = null;
+    this.composerBundle = this.runtimeService.createEmptyComposerBundle();
     this.scene = null;
     this.camera = null;
     this.frameStats?.dispose();

@@ -1,12 +1,12 @@
 import { Injectable } from '@angular/core';
-import * as THREE from 'three';
 import { MeshBVH, acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
+import { SceneInstance, ThreeModule } from './testbed-runtime.service';
 
 @Injectable({ providedIn: 'root' })
 export class SceneOptimizationService {
   applyEnvironmentIntensity(
-    scene: THREE.Scene | null,
-    threeModule: typeof THREE,
+    scene: SceneInstance | null,
+    threeModule: ThreeModule,
     intensity: number,
   ): void {
     const THREE = threeModule;
@@ -14,20 +14,20 @@ export class SceneOptimizationService {
       return;
     }
 
-    scene.traverse((object: THREE.Object3D) => {
+    scene.traverse((object) => {
       if (object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial) {
         object.material.envMapIntensity = intensity;
       }
     });
   }
 
-  updateLodBias(scene: THREE.Scene | null, threeModule: typeof THREE, bias: number): void {
+  updateLodBias(scene: SceneInstance | null, threeModule: ThreeModule, bias: number): void {
     const THREE = threeModule;
     if (!scene) {
       return;
     }
 
-    scene.traverse((object: THREE.Object3D) => {
+    scene.traverse((object) => {
       if (object instanceof THREE.LOD) {
         object.levels.forEach((level, index) => {
           if (index === 0) {
@@ -40,27 +40,29 @@ export class SceneOptimizationService {
     });
   }
 
-  applyBvh(scene: THREE.Scene | null, threeModule: typeof THREE, enabled: boolean): boolean {
+  applyBvh(scene: SceneInstance | null, threeModule: ThreeModule, enabled: boolean): boolean {
     const THREE = threeModule;
     if (!enabled || !scene) {
       return false;
     }
 
-    const geometryProto = THREE.BufferGeometry.prototype as THREE.BufferGeometry & {
+    const geometryProto = THREE.BufferGeometry.prototype as InstanceType<ThreeModule['BufferGeometry']> & {
       computeBoundsTree?: () => void;
       disposeBoundsTree?: () => void;
     };
     geometryProto.computeBoundsTree = computeBoundsTree;
     geometryProto.disposeBoundsTree = disposeBoundsTree;
 
-    const meshProto = THREE.Mesh.prototype as THREE.Mesh & {
+    const meshProto = THREE.Mesh.prototype as InstanceType<ThreeModule['Mesh']> & {
       raycast: typeof acceleratedRaycast;
     };
     meshProto.raycast = acceleratedRaycast;
 
-    scene.traverse((object: THREE.Object3D) => {
+    scene.traverse((object) => {
       if (object instanceof THREE.Mesh) {
-        const geometry = object.geometry as THREE.BufferGeometry & { boundsTree?: MeshBVH };
+        const geometry = object.geometry as InstanceType<ThreeModule['BufferGeometry']> & {
+          boundsTree?: MeshBVH;
+        };
         if (!geometry.boundsTree) {
           geometry.computeBoundsTree?.();
         }

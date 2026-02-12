@@ -30,7 +30,9 @@
         (change)="updateAntialiasing(antialiasing.value)"
       >
         @for (mode of antialiasingModes; track mode) {
-          <option [value]="mode">{{ mode.toUpperCase() }}</option>
+          <option [value]="mode" [disabled]="!isAntialiasingSupported(mode)">
+            {{ mode.toUpperCase() }}
+          </option>
         }
       </select>
     </label>
@@ -45,6 +47,7 @@
           max="8"
           step="1"
           [value]="settings().msaaSamples"
+          [disabled]="!isControlSupported('msaaSamples')"
           (input)="updateRenderingNumber('msaaSamples', msaaSamples.valueAsNumber)"
         />
         <span class="range-value">{{ settings().msaaSamples }}</span>
@@ -56,6 +59,7 @@
         #smaaQuality
         class="field-input"
         [value]="settings().smaaQuality"
+        [disabled]="!isControlSupported('smaaQuality')"
         (change)="updateSmaaQuality(smaaQuality.value)"
       >
         @for (quality of qualityLevels; track quality) {
@@ -74,6 +78,7 @@
           max="8"
           step="1"
           [value]="settings().taaSamples"
+          [disabled]="!isControlSupported('taaSamples')"
           (input)="updateRenderingNumber('taaSamples', taaSamples.valueAsNumber)"
         />
         <span class="range-value">{{ settings().taaSamples }}</span>
@@ -90,6 +95,7 @@
         #ssaoEnabled
         type="checkbox"
         [checked]="settings().ssaoEnabled"
+        [disabled]="!isControlSupported('ssaoEnabled')"
         (change)="updateRenderingBoolean('ssaoEnabled', ssaoEnabled.checked)"
       />
     </label>
@@ -104,6 +110,7 @@
           max="32"
           step="1"
           [value]="settings().ssaoRadius"
+          [disabled]="!isControlSupported('ssaoRadius')"
           (input)="updateRenderingNumber('ssaoRadius', ssaoRadius.valueAsNumber)"
         />
         <span class="range-value">{{ settings().ssaoRadius }}</span>
@@ -115,6 +122,7 @@
         #ssaoQuality
         class="field-input"
         [value]="settings().ssaoQuality"
+        [disabled]="!isControlSupported('ssaoQuality')"
         (change)="updateSsaoQuality(ssaoQuality.value)"
       >
         @for (quality of qualityLevels; track quality) {
@@ -123,11 +131,17 @@
       </select>
     </label>
 
-    <label class="toggle-row disabled-row">
+    <label class="toggle-row" [class.disabled-row]="!isControlSupported('ssrEnabled')">
       <span>SSR</span>
-      <input type="checkbox" [checked]="settings().ssrEnabled" disabled />
+      <input
+        #ssrEnabled
+        type="checkbox"
+        [checked]="settings().ssrEnabled"
+        [disabled]="!isControlSupported('ssrEnabled')"
+        (change)="updateRenderingBoolean('ssrEnabled', ssrEnabled.checked)"
+      />
     </label>
-    <p class="feature-note">SSR is currently unavailable in this testbed build.</p>
+    <p class="feature-note">SSR availability depends on active renderer implementation.</p>
 
     <label class="toggle-row">
       <span>Depth of field</span>
@@ -135,6 +149,7 @@
         #depthOfField
         type="checkbox"
         [checked]="settings().depthOfField"
+        [disabled]="!isControlSupported('depthOfField')"
         (change)="updateRenderingBoolean('depthOfField', depthOfField.checked)"
       />
     </label>
@@ -149,6 +164,7 @@
           max="20"
           step="0.1"
           [value]="settings().dofFocus"
+          [disabled]="!isControlSupported('dofFocus')"
           (input)="updateRenderingNumber('dofFocus', dofFocus.valueAsNumber)"
         />
         <span class="range-value">{{ settings().dofFocus.toFixed(1) }}</span>
@@ -165,6 +181,7 @@
           max="0.05"
           step="0.001"
           [value]="settings().dofAperture"
+          [disabled]="!isControlSupported('dofAperture')"
           (input)="updateRenderingNumber('dofAperture', dofAperture.valueAsNumber)"
         />
         <span class="range-value">{{ settings().dofAperture.toFixed(3) }}</span>
@@ -181,6 +198,7 @@
           max="0.02"
           step="0.001"
           [value]="settings().dofMaxBlur"
+          [disabled]="!isControlSupported('dofMaxBlur')"
           (input)="updateRenderingNumber('dofMaxBlur', dofBlur.valueAsNumber)"
         />
         <span class="range-value">{{ settings().dofMaxBlur.toFixed(3) }}</span>
@@ -193,6 +211,7 @@
         #chromatic
         type="checkbox"
         [checked]="settings().chromaticAberration"
+        [disabled]="!isControlSupported('chromaticAberration')"
         (change)="updateRenderingBoolean('chromaticAberration', chromatic.checked)"
       />
     </label>
@@ -203,6 +222,7 @@
         #vignette
         type="checkbox"
         [checked]="settings().vignette"
+        [disabled]="!isControlSupported('vignette')"
         (change)="updateRenderingBoolean('vignette', vignette.checked)"
       />
     </label>
@@ -213,6 +233,7 @@
         #filmGrain
         type="checkbox"
         [checked]="settings().filmGrain"
+        [disabled]="!isControlSupported('filmGrain')"
         (change)="updateRenderingBoolean('filmGrain', filmGrain.checked)"
       />
     </label>
@@ -345,6 +366,7 @@
         #lensFlares
         type="checkbox"
         [checked]="settings().lensFlares"
+        [disabled]="!isControlSupported('lensFlares')"
         (change)="updateRenderingBoolean('lensFlares', lensFlares.checked)"
       />
     </label>

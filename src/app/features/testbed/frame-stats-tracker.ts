@@ -1,9 +1,10 @@
-import * as THREE from 'three';
-import * as THREE_WEBGPU from 'three/webgpu';
+import type { WebGLRenderer } from 'three';
+import type { WebGPURenderer } from 'three/webgpu';
 
 import { StatsSample } from './metrics.model';
+import { RendererMode } from './controls.model';
 
-export type RendererInstance = THREE.WebGLRenderer | THREE_WEBGPU.WebGPURenderer;
+export type RendererInstance = WebGLRenderer | WebGPURenderer;
 
 type Webgl2TimerQueryExt = {
   TIME_ELAPSED_EXT: number;
@@ -153,11 +154,16 @@ export class FrameStatsTracker {
   private lastSample: StatsSample = { fps: 0, cpu: 0, gpu: null };
   private gpuTimer: WebglGpuTimer | null = null;
 
-  init(renderer: RendererInstance): void {
+  init(renderer: RendererInstance, mode: RendererMode): void {
     this.dispose();
     this.lastFrameTime = performance.now();
-    if (renderer instanceof THREE.WebGLRenderer) {
-      const timer = new WebglGpuTimer(renderer.getContext());
+    if (mode !== 'webgl' || !('getContext' in renderer)) {
+      return;
+    }
+
+    const context = renderer.getContext();
+    if (context) {
+      const timer = new WebglGpuTimer(context);
       this.gpuTimer = timer.isAvailable ? timer : null;
     }
   }
