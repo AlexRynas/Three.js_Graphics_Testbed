@@ -19,6 +19,10 @@
   align-items: stretch;
 }
 
+.viewport-stage {
+  position: relative;
+}
+
 @media (max-width: 1100px) {
   .layout {
     grid-template-columns: 1fr;

@@ -1,0 +1,32 @@
+:host {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 1.25rem;
+}
+
+.status-bar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-mid);
+  background: rgba(10, 16, 22, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+}
+
+.status-chip {
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(69, 227, 194, 0.2);
+  color: var(--accent-cyan);
+  font-weight: 600;
+}
+
+@media (max-width: 700px) {
+  :host {
+    position: static;
+    margin: 0 1rem 1rem;
+  }
+}

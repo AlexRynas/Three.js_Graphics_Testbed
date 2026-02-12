@@ -7,12 +7,11 @@
   ></app-topbar>
 
   <main class="layout">
-    <app-viewport
-      [rendererLabel]="rendererLabel()"
-      [metrics]="metrics()"
-      [status]="status()"
-      [benchmark]="benchmark()"
-    ></app-viewport>
+    <div class="viewport-stage">
+      <app-viewport></app-viewport>
+      <app-hud [rendererLabel]="rendererLabel()" [metrics]="metrics()"></app-hud>
+      <app-status-bar [status]="status()" [benchmark]="benchmark()"></app-status-bar>
+    </div>
 
     <app-sidebar>
       <app-collections-panel

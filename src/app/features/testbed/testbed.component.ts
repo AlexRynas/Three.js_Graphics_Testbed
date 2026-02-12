@@ -48,7 +48,9 @@ import { FeatureTogglesPanelComponent } from './components/panels/feature-toggle
 import { InspectorPanelComponent } from './components/panels/inspector-panel/inspector-panel.component';
 import { PresetsPanelComponent } from './components/panels/presets-panel/presets-panel.component';
 import { GuiDockComponent } from './components/gui-dock/gui-dock.component';
+import { HudComponent } from './components/hud/hud.component';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
+import { StatusBarComponent } from './components/status-bar/status-bar.component';
 import { TopbarComponent } from './components/topbar/topbar.component';
 import { ViewportComponent } from './components/viewport/viewport.component';
 
@@ -280,7 +282,9 @@ class FrameStatsTracker {
     InspectorPanelComponent,
     PresetsPanelComponent,
     GuiDockComponent,
+    HudComponent,
     SidebarComponent,
+    StatusBarComponent,
     TopbarComponent,
     ViewportComponent,
   ],

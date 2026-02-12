@@ -1,0 +1,6 @@
+<div class="status-bar">
+  <span>{{ status() }}</span>
+  @if (benchmark().active) {
+    <span class="status-chip">Benchmark {{ benchmark().progress * 100 | number: '1.0-0' }}%</span>
+  }
+</div>
