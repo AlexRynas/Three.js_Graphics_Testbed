@@ -42,12 +42,11 @@ import {
 import { AssetService } from './asset.service';
 import { CapabilitiesService } from './capabilities.service';
 import { PresetService } from './preset.service';
-import { IconButtonComponent } from '../../shared/ui/icon-button/icon-button.component';
-import { LabeledFieldComponent } from '../../shared/ui/labeled-field/labeled-field.component';
-import { PillButtonComponent } from '../../shared/ui/pill-button/pill-button.component';
-import { SectionHeaderComponent } from '../../shared/ui/section-header/section-header.component';
-import { SelectButtonComponent } from '../../shared/ui/select-button/select-button.component';
-import { StatGridComponent } from '../../shared/ui/stat-grid/stat-grid.component';
+import { CapabilitiesPanelComponent } from './components/panels/capabilities-panel/capabilities-panel.component';
+import { CollectionsPanelComponent } from './components/panels/collections-panel/collections-panel.component';
+import { FeatureTogglesPanelComponent } from './components/panels/feature-toggles-panel/feature-toggles-panel.component';
+import { InspectorPanelComponent } from './components/panels/inspector-panel/inspector-panel.component';
+import { PresetsPanelComponent } from './components/panels/presets-panel/presets-panel.component';
 import { GuiDockComponent } from './components/gui-dock/gui-dock.component';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { TopbarComponent } from './components/topbar/topbar.component';
@@ -275,12 +274,11 @@ class FrameStatsTracker {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     CommonModule,
-    IconButtonComponent,
-    LabeledFieldComponent,
-    PillButtonComponent,
-    SectionHeaderComponent,
-    SelectButtonComponent,
-    StatGridComponent,
+    CapabilitiesPanelComponent,
+    CollectionsPanelComponent,
+    FeatureTogglesPanelComponent,
+    InspectorPanelComponent,
+    PresetsPanelComponent,
     GuiDockComponent,
     SidebarComponent,
     TopbarComponent,

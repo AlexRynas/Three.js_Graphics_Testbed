@@ -1,0 +1,30 @@
+<aside appPanel class="panel-section" aria-labelledby="presets-panel-title">
+  <h3 id="presets-panel-title" appSectionHeader>Presets</h3>
+  <div class="preset-list" role="list" aria-label="Saved presets">
+    @for (preset of presets(); track preset.name) {
+      <div class="preset-row" role="listitem">
+        <button appSelectButton type="button" (click)="apply.emit(preset)">
+          <span>{{ preset.name }}</span>
+        </button>
+        <button
+          appIconButton
+          type="button"
+          (click)="delete.emit(preset)"
+          [attr.aria-label]="'Delete preset ' + preset.name"
+        >
+          ✕
+        </button>
+      </div>
+    }
+  </div>
+  <label appLabeledField label="Preset name">
+    <input
+      class="field-input"
+      type="text"
+      [value]="presetName()"
+      (input)="updateName.emit($event)"
+      placeholder="Name your preset"
+    />
+  </label>
+  <button appPillButton type="button" (click)="save.emit()">Save preset</button>
+</aside>

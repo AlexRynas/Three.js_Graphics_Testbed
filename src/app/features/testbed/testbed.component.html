@@ -15,77 +15,26 @@
     ></app-viewport>
 
     <app-sidebar>
-      <section class="panel-section">
-        <h3 appSectionHeader>Collections</h3>
-        <div class="button-grid">
-          @for (collection of collections(); track collection.id) {
-            <button
-              appSelectButton
-              type="button"
-              (click)="selectCollection(collection.id)"
-              [active]="collection.id === activeCollectionId()"
-            >
-              <span>{{ collection.displayName }}</span>
-            </button>
-          }
-        </div>
-      </section>
+      <app-collections-panel
+        [collections]="collections()"
+        [activeId]="activeCollectionId()"
+        (select)="selectCollection($event)"
+      ></app-collections-panel>
 
-      <section class="panel-section">
-        <h3 appSectionHeader>Presets</h3>
-        <div class="preset-list">
-          @for (preset of presets(); track preset.name) {
-            <div class="preset-row">
-              <button appSelectButton type="button" (click)="applyPreset(preset)">
-                <span>{{ preset.name }}</span>
-              </button>
-              <button
-                appIconButton
-                type="button"
-                (click)="deletePreset(preset)"
-                aria-label="Delete preset"
-              >
-                ✕
-              </button>
-            </div>
-          }
-        </div>
-        <label appLabeledField label="Preset name">
-          <input
-            class="field-input"
-            type="text"
-            [value]="presetName()"
-            (input)="updatePresetName($event)"
-            placeholder="Name your preset"
-          />
-        </label>
-        <button appPillButton type="button" (click)="savePreset()">Save preset</button>
-      </section>
+      <app-presets-panel
+        [presets]="presets()"
+        [presetName]="presetName()"
+        (apply)="applyPreset($event)"
+        (delete)="deletePreset($event)"
+        (updateName)="updatePresetName($event)"
+        (save)="savePreset()"
+      ></app-presets-panel>
 
-      <section class="panel-section">
-        <h3 appSectionHeader>Capabilities</h3>
-        <app-stat-grid [rows]="capabilityRows()"></app-stat-grid>
-      </section>
+      <app-capabilities-panel [rows]="capabilityRows()"></app-capabilities-panel>
 
-      <section class="panel-section">
-        <h3 appSectionHeader>Scene Inspector</h3>
-        <app-stat-grid [rows]="inspectorRows()"></app-stat-grid>
-      </section>
+      <app-inspector-panel [rows]="inspectorRows()"></app-inspector-panel>
 
-      <section class="panel-section">
-        <h3 appSectionHeader>Feature Toggles</h3>
-        <div class="feature-list">
-          @for (feature of featureRows(); track feature.key) {
-            <div class="feature-row" [class.unsupported]="!feature.supported">
-              <span>{{ feature.label }}</span>
-              <span class="feature-status">
-                {{ feature.supported ? 'Supported' : 'Unavailable' }}
-              </span>
-            </div>
-          }
-        </div>
-        <p class="hint">Use the lil-gui panel for detailed sliders and quality controls.</p>
-      </section>
+      <app-feature-toggles-panel [features]="featureRows()"></app-feature-toggles-panel>
     </app-sidebar>
   </main>
 

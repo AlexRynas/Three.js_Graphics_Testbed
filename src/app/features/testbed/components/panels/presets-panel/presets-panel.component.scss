@@ -1,0 +1,15 @@
+.panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.preset-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.preset-row {
+  display: flex;
+  gap: 0.4rem;
+}

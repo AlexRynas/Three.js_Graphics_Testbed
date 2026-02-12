@@ -1,0 +1,14 @@
+<aside appPanel class="panel-section" aria-labelledby="feature-toggles-panel-title">
+  <h3 id="feature-toggles-panel-title" appSectionHeader>Feature Toggles</h3>
+  <ul class="feature-list" aria-label="Feature support status">
+    @for (feature of features(); track feature.key) {
+      <li class="feature-row" [class.unsupported]="!feature.supported">
+        <span>{{ feature.label }}</span>
+        <span class="feature-status">
+          {{ feature.supported ? 'Supported' : 'Unavailable' }}
+        </span>
+      </li>
+    }
+  </ul>
+  <p class="hint">Use the lil-gui panel for detailed sliders and quality controls.</p>
+</aside>

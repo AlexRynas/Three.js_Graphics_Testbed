@@ -1,0 +1,16 @@
+<aside appPanel class="panel-section" aria-labelledby="collections-panel-title">
+  <h3 id="collections-panel-title" appSectionHeader>Collections</h3>
+  <div class="button-grid" role="list" aria-label="Asset collections">
+    @for (collection of collections(); track collection.id) {
+      <button
+        appSelectButton
+        type="button"
+        role="listitem"
+        (click)="select.emit(collection.id)"
+        [active]="collection.id === activeId()"
+      >
+        <span>{{ collection.displayName }}</span>
+      </button>
+    }
+  </div>
+</aside>
