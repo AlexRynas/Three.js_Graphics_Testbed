@@ -10,7 +10,6 @@ import {
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import * as THREE from 'three';
-import * as THREE_WEBGPU from 'three/webgpu';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
@@ -19,14 +18,10 @@ import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
 import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
 import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
-import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
-import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
-import { RGBShiftShader } from 'three/examples/jsm/shaders/RGBShiftShader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Lensflare } from 'three/examples/jsm/objects/Lensflare.js';
 import GUI from 'lil-gui';
 import {
-  CollectionManifest,
   CollectionRef,
   InspectorSnapshot,
   Preset,
@@ -121,7 +116,6 @@ export class TestbedComponent implements AfterViewInit {
   private latestStats: StatsSample | null = null;
   private gui: GUI | null = null;
   private resizeObserver: ResizeObserver | null = null;
-  private currentManifest: CollectionManifest | null = null;
   private activeGroup: THREE.Group | null = null;
   private primaryLight: THREE.DirectionalLight | null = null;
   private lensflare: Lensflare | null = null;
@@ -545,7 +539,6 @@ export class TestbedComponent implements AfterViewInit {
       applyEnvironment: (hdrTexture) => this.applyEnvironment(hdrTexture),
     });
 
-    this.currentManifest = result.manifest;
     this.activeGroup = result.activeGroup;
     this.refreshInspector();
 
