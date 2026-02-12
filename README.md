@@ -12,7 +12,8 @@ An Angular 21 + Three.js graphics sandbox for testing renderer modes, post-proce
 
 ## Brief project logic
 
-- Testbed shell ([src/app/features/testbed/testbed.component.ts](src/app/features/testbed/testbed.component.ts)) owns UI state/signals, wires child component events, and coordinates services.
+- Testbed view shell ([src/app/features/testbed/testbed.component.ts](src/app/features/testbed/testbed.component.ts)) is intentionally thin: it binds template events/signals and delegates behavior.
+- Testbed orchestration facade ([src/app/features/testbed/testbed.facade.ts](src/app/features/testbed/testbed.facade.ts)) owns feature state/signals and coordinates lifecycle, rendering updates, scene loading, benchmark flow, and cleanup.
 - Runtime setup ([src/app/features/testbed/testbed-runtime.service.ts](src/app/features/testbed/testbed-runtime.service.ts)) builds renderer, scene, camera, controls, composer, and resize behavior.
 - Scene content ([src/app/features/testbed/scene-content.service.ts](src/app/features/testbed/scene-content.service.ts)) handles collection manifests, LOD loading, procedural fallback, and active-group lifecycle.
 - Rendering effects ([src/app/features/testbed/rendering-settings.service.ts](src/app/features/testbed/rendering-settings.service.ts), [src/app/features/testbed/lighting-effects.service.ts](src/app/features/testbed/lighting-effects.service.ts), [src/app/features/testbed/scene-optimization.service.ts](src/app/features/testbed/scene-optimization.service.ts)) apply tone mapping, post-FX toggles, filtering, lens flares, BVH, and environment/LOD adjustments.
@@ -23,7 +24,8 @@ An Angular 21 + Three.js graphics sandbox for testing renderer modes, post-proce
 
 ```mermaid
 flowchart TD
-  T[TestbedComponent\nOrchestration Shell]
+  T[TestbedComponent\nThin View Shell]
+  F[TestbedFacade\nFeature Orchestration]
 
   subgraph UI[UI Components]
     Top[Topbar]
@@ -59,19 +61,21 @@ flowchart TD
   T --> Status
   T --> GuiDock
 
-  T --> Runtime
-  T --> SceneContent
-  T --> RenderCfg
-  T --> Lighting
-  T --> SceneOpt
+  T --> F
 
-  T --> Assets
-  T --> Caps
-  T --> Presets
-  T --> Bench
-  T --> Inspect
-  T --> GuiBridge
-  T --> Frame
+  F --> Runtime
+  F --> SceneContent
+  F --> RenderCfg
+  F --> Lighting
+  F --> SceneOpt
+
+  F --> Assets
+  F --> Caps
+  F --> Presets
+  F --> Bench
+  F --> Inspect
+  F --> GuiBridge
+  F --> Frame
 
   SceneContent --> Assets
 ```
