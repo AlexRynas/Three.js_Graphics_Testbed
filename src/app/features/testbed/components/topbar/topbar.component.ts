@@ -12,6 +12,7 @@ import { PillButtonComponent } from '../../../../shared/ui/pill-button/pill-butt
 export class TopbarComponent {
   readonly status = input('');
   readonly canBenchmark = input(true);
+  readonly settingsVisible = input(true);
 
   readonly runBenchmark = output<void>();
   readonly exportMetrics = output<void>();

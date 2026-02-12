@@ -1,6 +1,7 @@
 <section class="testbed">
   <app-topbar
     [status]="status()"
+    [settingsVisible]="guiVisible()"
     (runBenchmark)="runBenchmark()"
     (exportMetrics)="exportMetrics()"
     (toggleGui)="toggleGui()"
@@ -10,6 +11,14 @@
     <div class="viewport-stage">
       <app-viewport></app-viewport>
       <app-hud [rendererLabel]="rendererLabel()" [metrics]="metrics()"></app-hud>
+      <app-settings-dock
+        [visible]="guiVisible()"
+        [settings]="settings()"
+        [sceneSettings]="sceneSettings()"
+        [capabilities]="capabilitySummary()"
+        (renderingUpdated)="updateRenderingSetting($event)"
+        (sceneUpdated)="updateSceneSetting($event)"
+      ></app-settings-dock>
       <app-status-bar [status]="status()" [benchmark]="benchmark()"></app-status-bar>
     </div>
 
@@ -40,5 +49,4 @@
     </app-sidebar>
   </main>
 
-  <div appGuiDock [visible]="guiVisible()"></div>
 </section>

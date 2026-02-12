@@ -6,7 +6,7 @@ An Angular 21 + Three.js graphics sandbox for testing renderer modes, post-proce
 
 - Runs a configurable graphics testbed in WebGL or WebGPU.
 - Loads scene collections by manifest (with LOD support) and falls back to a procedural demo scene when assets are missing.
-- Exposes renderer/scene controls through sidebar panels and lil-gui.
+- Exposes renderer/scene controls through sidebar panels and an in-viewport Angular settings dock.
 - Tracks runtime metrics (FPS, CPU/GPU timing, draw calls, triangles, memory).
 - Runs a benchmark camera path and exports a JSON metrics report.
 
@@ -32,8 +32,8 @@ flowchart TD
     Side[Sidebar + Panels]
     View[Viewport]
     Hud[HUD]
+    Settings[Settings Dock]
     Status[Status Bar]
-    GuiDock[GUI Dock]
   end
 
   subgraph Core[Core Services]
@@ -50,7 +50,6 @@ flowchart TD
     Presets[PresetService]
     Bench[BenchmarkService]
     Inspect[InspectorService]
-    GuiBridge[GuiBridgeService]
     Frame[FrameStatsTracker]
   end
 
@@ -58,8 +57,8 @@ flowchart TD
   T --> Side
   T --> View
   T --> Hud
+  T --> Settings
   T --> Status
-  T --> GuiDock
 
   T --> F
 
@@ -74,7 +73,6 @@ flowchart TD
   F --> Presets
   F --> Bench
   F --> Inspect
-  F --> GuiBridge
   F --> Frame
 
   SceneContent --> Assets

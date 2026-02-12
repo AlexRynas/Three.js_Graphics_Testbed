@@ -1,0 +1,394 @@
+<aside
+  appPanel
+  class="settings-dock"
+  aria-labelledby="settings-dock-title"
+  aria-label="Scene and rendering controls"
+>
+  <h3 id="settings-dock-title" appSectionHeader>Render Settings</h3>
+
+  <section class="group" aria-label="Renderer settings">
+    <h4 class="group-title">Renderer</h4>
+
+    <label appLabeledField label="Mode">
+      <select
+        #rendererMode
+        class="field-input"
+        [value]="settings().rendererMode"
+        (change)="updateRendererMode(rendererMode.value)"
+      >
+        @for (mode of rendererModes; track mode) {
+          <option [value]="mode">{{ mode.toUpperCase() }}</option>
+        }
+      </select>
+    </label>
+
+    <label appLabeledField label="Anti-aliasing">
+      <select
+        #antialiasing
+        class="field-input"
+        [value]="settings().antialiasing"
+        (change)="updateAntialiasing(antialiasing.value)"
+      >
+        @for (mode of antialiasingModes; track mode) {
+          <option [value]="mode">{{ mode.toUpperCase() }}</option>
+        }
+      </select>
+    </label>
+
+    <label appLabeledField label="MSAA samples">
+      <div class="range-field">
+        <input
+          #msaaSamples
+          class="field-input"
+          type="range"
+          min="0"
+          max="8"
+          step="1"
+          [value]="settings().msaaSamples"
+          (input)="updateRenderingNumber('msaaSamples', msaaSamples.valueAsNumber)"
+        />
+        <span class="range-value">{{ settings().msaaSamples }}</span>
+      </div>
+    </label>
+
+    <label appLabeledField label="SMAA quality">
+      <select
+        #smaaQuality
+        class="field-input"
+        [value]="settings().smaaQuality"
+        (change)="updateSmaaQuality(smaaQuality.value)"
+      >
+        @for (quality of qualityLevels; track quality) {
+          <option [value]="quality">{{ quality.toUpperCase() }}</option>
+        }
+      </select>
+    </label>
+
+    <label appLabeledField label="TAA samples">
+      <div class="range-field">
+        <input
+          #taaSamples
+          class="field-input"
+          type="range"
+          min="1"
+          max="8"
+          step="1"
+          [value]="settings().taaSamples"
+          (input)="updateRenderingNumber('taaSamples', taaSamples.valueAsNumber)"
+        />
+        <span class="range-value">{{ settings().taaSamples }}</span>
+      </div>
+    </label>
+  </section>
+
+  <section class="group" aria-label="Post effects settings">
+    <h4 class="group-title">Post FX</h4>
+
+    <label class="toggle-row">
+      <span>SSAO</span>
+      <input
+        #ssaoEnabled
+        type="checkbox"
+        [checked]="settings().ssaoEnabled"
+        (change)="updateRenderingBoolean('ssaoEnabled', ssaoEnabled.checked)"
+      />
+    </label>
+
+    <label appLabeledField label="SSAO radius">
+      <div class="range-field">
+        <input
+          #ssaoRadius
+          class="field-input"
+          type="range"
+          min="1"
+          max="32"
+          step="1"
+          [value]="settings().ssaoRadius"
+          (input)="updateRenderingNumber('ssaoRadius', ssaoRadius.valueAsNumber)"
+        />
+        <span class="range-value">{{ settings().ssaoRadius }}</span>
+      </div>
+    </label>
+
+    <label appLabeledField label="SSAO quality">
+      <select
+        #ssaoQuality
+        class="field-input"
+        [value]="settings().ssaoQuality"
+        (change)="updateSsaoQuality(ssaoQuality.value)"
+      >
+        @for (quality of qualityLevels; track quality) {
+          <option [value]="quality">{{ quality.toUpperCase() }}</option>
+        }
+      </select>
+    </label>
+
+    <label class="toggle-row disabled-row">
+      <span>SSR</span>
+      <input type="checkbox" [checked]="settings().ssrEnabled" disabled />
+    </label>
+    <p class="feature-note">SSR is currently unavailable in this testbed build.</p>
+
+    <label class="toggle-row">
+      <span>Depth of field</span>
+      <input
+        #depthOfField
+        type="checkbox"
+        [checked]="settings().depthOfField"
+        (change)="updateRenderingBoolean('depthOfField', depthOfField.checked)"
+      />
+    </label>
+
+    <label appLabeledField label="DOF focus">
+      <div class="range-field">
+        <input
+          #dofFocus
+          class="field-input"
+          type="range"
+          min="1"
+          max="20"
+          step="0.1"
+          [value]="settings().dofFocus"
+          (input)="updateRenderingNumber('dofFocus', dofFocus.valueAsNumber)"
+        />
+        <span class="range-value">{{ settings().dofFocus.toFixed(1) }}</span>
+      </div>
+    </label>
+
+    <label appLabeledField label="DOF aperture">
+      <div class="range-field">
+        <input
+          #dofAperture
+          class="field-input"
+          type="range"
+          min="0.001"
+          max="0.05"
+          step="0.001"
+          [value]="settings().dofAperture"
+          (input)="updateRenderingNumber('dofAperture', dofAperture.valueAsNumber)"
+        />
+        <span class="range-value">{{ settings().dofAperture.toFixed(3) }}</span>
+      </div>
+    </label>
+
+    <label appLabeledField label="DOF blur">
+      <div class="range-field">
+        <input
+          #dofBlur
+          class="field-input"
+          type="range"
+          min="0.001"
+          max="0.02"
+          step="0.001"
+          [value]="settings().dofMaxBlur"
+          (input)="updateRenderingNumber('dofMaxBlur', dofBlur.valueAsNumber)"
+        />
+        <span class="range-value">{{ settings().dofMaxBlur.toFixed(3) }}</span>
+      </div>
+    </label>
+
+    <label class="toggle-row">
+      <span>Chromatic aberration</span>
+      <input
+        #chromatic
+        type="checkbox"
+        [checked]="settings().chromaticAberration"
+        (change)="updateRenderingBoolean('chromaticAberration', chromatic.checked)"
+      />
+    </label>
+
+    <label class="toggle-row">
+      <span>Vignette</span>
+      <input
+        #vignette
+        type="checkbox"
+        [checked]="settings().vignette"
+        (change)="updateRenderingBoolean('vignette', vignette.checked)"
+      />
+    </label>
+
+    <label class="toggle-row">
+      <span>Film grain</span>
+      <input
+        #filmGrain
+        type="checkbox"
+        [checked]="settings().filmGrain"
+        (change)="updateRenderingBoolean('filmGrain', filmGrain.checked)"
+      />
+    </label>
+  </section>
+
+  <section class="group" aria-label="Texture and filtering settings">
+    <h4 class="group-title">Texture + Filtering</h4>
+
+    <label appLabeledField label="Anisotropy">
+      <div class="range-field">
+        <input
+          #anisotropy
+          class="field-input"
+          type="range"
+          min="1"
+          [max]="capabilities().maxAnisotropy || 1"
+          step="1"
+          [value]="settings().anisotropy"
+          (input)="updateRenderingNumber('anisotropy', anisotropy.valueAsNumber)"
+        />
+        <span class="range-value">{{ settings().anisotropy }}</span>
+      </div>
+    </label>
+
+    <label appLabeledField label="Filtering">
+      <select
+        #filtering
+        class="field-input"
+        [value]="settings().textureFiltering"
+        (change)="updateTextureFiltering(filtering.value)"
+      >
+        @for (mode of textureModes; track mode) {
+          <option [value]="mode">{{ mode }}</option>
+        }
+      </select>
+    </label>
+  </section>
+
+  <section class="group" aria-label="Scene settings">
+    <h4 class="group-title">Scene</h4>
+
+    <label appLabeledField label="Environment intensity">
+      <div class="range-field">
+        <input
+          #environmentIntensity
+          class="field-input"
+          type="range"
+          min="0"
+          max="2"
+          step="0.05"
+          [value]="sceneSettings().environmentIntensity"
+          (input)="updateSceneNumber('environmentIntensity', environmentIntensity.valueAsNumber)"
+        />
+        <span class="range-value">{{ sceneSettings().environmentIntensity.toFixed(2) }}</span>
+      </div>
+    </label>
+
+    <label appLabeledField label="Exposure">
+      <div class="range-field">
+        <input
+          #exposure
+          class="field-input"
+          type="range"
+          min="0.4"
+          max="2"
+          step="0.05"
+          [value]="sceneSettings().exposure"
+          (input)="updateSceneNumber('exposure', exposure.valueAsNumber)"
+        />
+        <span class="range-value">{{ sceneSettings().exposure.toFixed(2) }}</span>
+      </div>
+    </label>
+
+    <label appLabeledField label="Tone mapping">
+      <select
+        #toneMapping
+        class="field-input"
+        [value]="sceneSettings().toneMapping"
+        (change)="updateToneMapping(toneMapping.value)"
+      >
+        @for (mode of toneMappingModes; track mode) {
+          <option [value]="mode">{{ mode.toUpperCase() }}</option>
+        }
+      </select>
+    </label>
+
+    <label class="toggle-row">
+      <span>Auto-rotate camera</span>
+      <input
+        #autoRotate
+        type="checkbox"
+        [checked]="sceneSettings().autoRotate"
+        (change)="updateSceneBoolean('autoRotate', autoRotate.checked)"
+      />
+    </label>
+
+    <label appLabeledField label="LOD bias">
+      <div class="range-field">
+        <input
+          #lodBias
+          class="field-input"
+          type="range"
+          min="-2"
+          max="2"
+          step="0.25"
+          [value]="sceneSettings().lodBias"
+          (input)="updateSceneNumber('lodBias', lodBias.valueAsNumber)"
+        />
+        <span class="range-value">{{ sceneSettings().lodBias.toFixed(2) }}</span>
+      </div>
+    </label>
+
+    <label class="toggle-row">
+      <span>GPU BVH</span>
+      <input
+        #bvhEnabled
+        type="checkbox"
+        [checked]="sceneSettings().bvhEnabled"
+        (change)="updateSceneBoolean('bvhEnabled', bvhEnabled.checked)"
+      />
+    </label>
+  </section>
+
+  <section class="group" aria-label="Extra rendering settings">
+    <h4 class="group-title">Extras</h4>
+
+    <label class="toggle-row">
+      <span>Lens flares</span>
+      <input
+        #lensFlares
+        type="checkbox"
+        [checked]="settings().lensFlares"
+        (change)="updateRenderingBoolean('lensFlares', lensFlares.checked)"
+      />
+    </label>
+
+    <label class="toggle-row">
+      <span>Contact shadows</span>
+      <input
+        #contactShadows
+        type="checkbox"
+        [checked]="settings().contactShadows"
+        (change)="updateRenderingBoolean('contactShadows', contactShadows.checked)"
+      />
+    </label>
+
+    <label class="toggle-row">
+      <span>Screen-space shadows</span>
+      <input
+        #ssShadows
+        type="checkbox"
+        [checked]="settings().screenSpaceShadows"
+        (change)="updateRenderingBoolean('screenSpaceShadows', ssShadows.checked)"
+      />
+    </label>
+
+    <label class="toggle-row disabled-row">
+      <span>Volumetric lighting</span>
+      <input type="checkbox" [checked]="settings().volumetricLighting" disabled />
+    </label>
+
+    <label class="toggle-row disabled-row">
+      <span>Global illumination</span>
+      <input type="checkbox" [checked]="settings().globalIllumination" disabled />
+    </label>
+
+    <label class="toggle-row disabled-row">
+      <span>Ray tracing</span>
+      <input type="checkbox" [checked]="settings().rayTracing" disabled />
+    </label>
+
+    <label class="toggle-row disabled-row">
+      <span>Path tracing</span>
+      <input type="checkbox" [checked]="settings().pathTracing" disabled />
+    </label>
+
+    <p class="feature-note">Unavailable extras are shown for parity and remain disabled.</p>
+  </section>
+</aside>

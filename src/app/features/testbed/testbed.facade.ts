@@ -10,7 +10,6 @@ import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
 import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Lensflare } from 'three/examples/jsm/objects/Lensflare.js';
-import GUI from 'lil-gui';
 
 import {
   CollectionRef,
@@ -25,7 +24,6 @@ import { AssetService } from './asset.service';
 import { BenchmarkService } from './benchmark.service';
 import { CapabilitiesService } from './capabilities.service';
 import { FrameStatsTracker, RendererInstance } from './frame-stats-tracker';
-import { GuiBridgeService } from './gui-bridge.service';
 import { InspectorService } from './inspector.service';
 import { LightingEffectsService } from './lighting-effects.service';
 import { PresetService } from './preset.service';
@@ -34,7 +32,6 @@ import { SceneContentService } from './scene-content.service';
 import { SceneOptimizationService } from './scene-optimization.service';
 import { StatsSample } from './metrics.model';
 import { TestbedRuntimeService } from './testbed-runtime.service';
-import { GuiDockComponent } from './components/gui-dock/gui-dock.component';
 import { ViewportComponent } from './components/viewport/viewport.component';
 
 @Injectable()
@@ -42,7 +39,6 @@ export class TestbedFacade {
   private readonly assetService = inject(AssetService);
   private readonly benchmarkService = inject(BenchmarkService);
   private readonly capabilitiesService = inject(CapabilitiesService);
-  private readonly guiBridgeService = inject(GuiBridgeService);
   private readonly inspectorService = inject(InspectorService);
   private readonly lightingEffectsService = inject(LightingEffectsService);
   private readonly presetService = inject(PresetService);
@@ -70,7 +66,6 @@ export class TestbedFacade {
   private clock: THREE.Clock | null = null;
   private frameStats: FrameStatsTracker | null = null;
   private latestStats: StatsSample | null = null;
-  private gui: GUI | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private activeGroup: THREE.Group | null = null;
   private primaryLight: THREE.DirectionalLight | null = null;
@@ -79,7 +74,6 @@ export class TestbedFacade {
   private currentMode: 'webgl' | 'webgpu' = 'webgl';
 
   private viewportShellRef: ViewportComponent | null = null;
-  private guiDockRef: GuiDockComponent | null = null;
 
   readonly status = signal('Initializing renderer...');
   readonly rendererLabel = signal('WebGL');
@@ -112,11 +106,9 @@ export class TestbedFacade {
 
   async afterViewInit(
     viewportShell: ViewportComponent,
-    guiDock: GuiDockComponent,
     destroyRef: DestroyRef,
   ): Promise<void> {
     this.viewportShellRef = viewportShell;
-    this.guiDockRef = guiDock;
 
     await this.capabilitiesService.detect();
     await this.initialize();
@@ -152,6 +144,17 @@ export class TestbedFacade {
 
   updatePresetName(name: string): void {
     this.presetName.set(name);
+  }
+
+  updateRenderingSetting<K extends keyof RenderingSettings>(
+    key: K,
+    value: RenderingSettings[K],
+  ): void {
+    this.settings.update((current) => ({ ...current, [key]: value }));
+  }
+
+  updateSceneSetting<K extends keyof SceneSettings>(key: K, value: SceneSettings[K]): void {
+    this.sceneSettings.update((current) => ({ ...current, [key]: value }));
   }
 
   savePreset(): void {
@@ -219,7 +222,6 @@ export class TestbedFacade {
     this.initComposer();
     this.initFrameStats();
     this.setupResizeObserver();
-    this.buildGui();
 
     const activeCollection =
       this.collections().find((collection) => collection.id === this.activeCollectionId()) ??
@@ -386,24 +388,6 @@ export class TestbedFacade {
     }
 
     return this.runtimeService.getViewportSize(viewportShell.viewport);
-  }
-
-  private buildGui(): void {
-    const guiDock = this.guiDockRef;
-    if (!guiDock) {
-      return;
-    }
-
-    this.gui = this.guiBridgeService.mount({
-      host: guiDock.element,
-      existingGui: this.gui,
-      rendering: this.settings(),
-      scene: this.sceneSettings(),
-      onCommit: (rendering, scene) => {
-        this.settings.set({ ...rendering });
-        this.sceneSettings.set({ ...scene });
-      },
-    });
   }
 
   private async applySettings(
@@ -672,11 +656,8 @@ export class TestbedFacade {
     this.camera = null;
     this.frameStats?.dispose();
     this.frameStats = null;
-    this.gui?.destroy();
-    this.gui = null;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.viewportShellRef = null;
-    this.guiDockRef = null;
   }
 }

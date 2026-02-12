@@ -19,7 +19,7 @@
       Export metrics
     </button>
     <button appPillButton type="button" variant="ghost" (click)="toggleGui.emit()">
-      Toggle GUI
+      {{ settingsVisible() ? 'Hide controls' : 'Show controls' }}
     </button>
   </div>
 </header>

@@ -9,14 +9,16 @@ import {
 import { CommonModule } from '@angular/common';
 import {
   Preset,
+  RenderingSettings,
+  SceneSettings,
 } from './controls.model';
 import { CapabilitiesPanelComponent } from './components/panels/capabilities-panel/capabilities-panel.component';
 import { CollectionsPanelComponent } from './components/panels/collections-panel/collections-panel.component';
 import { FeatureTogglesPanelComponent } from './components/panels/feature-toggles-panel/feature-toggles-panel.component';
 import { InspectorPanelComponent } from './components/panels/inspector-panel/inspector-panel.component';
 import { PresetsPanelComponent } from './components/panels/presets-panel/presets-panel.component';
-import { GuiDockComponent } from './components/gui-dock/gui-dock.component';
 import { HudComponent } from './components/hud/hud.component';
+import { SettingsDockComponent } from './components/settings-dock/settings-dock.component';
 import { SidebarComponent } from './components/sidebar/sidebar.component';
 import { StatusBarComponent } from './components/status-bar/status-bar.component';
 import { TopbarComponent } from './components/topbar/topbar.component';
@@ -35,8 +37,8 @@ import { TestbedFacade } from './testbed.facade';
     FeatureTogglesPanelComponent,
     InspectorPanelComponent,
     PresetsPanelComponent,
-    GuiDockComponent,
     HudComponent,
+    SettingsDockComponent,
     SidebarComponent,
     StatusBarComponent,
     TopbarComponent,
@@ -49,7 +51,6 @@ import { TestbedFacade } from './testbed.facade';
 })
 export class TestbedComponent implements AfterViewInit {
   readonly viewportShell = viewChild.required(ViewportComponent);
-  readonly guiDock = viewChild.required(GuiDockComponent);
 
   private readonly facade = inject(TestbedFacade);
   private readonly destroyRef = inject(DestroyRef);
@@ -69,7 +70,7 @@ export class TestbedComponent implements AfterViewInit {
   readonly presets = this.facade.presets;
 
   async ngAfterViewInit(): Promise<void> {
-    await this.facade.afterViewInit(this.viewportShell(), this.guiDock(), this.destroyRef);
+    await this.facade.afterViewInit(this.viewportShell(), this.destroyRef);
   }
 
   toggleGui(): void {
@@ -94,6 +95,20 @@ export class TestbedComponent implements AfterViewInit {
 
   savePreset(): void {
     this.facade.savePreset();
+  }
+
+  updateRenderingSetting(event: {
+    key: keyof RenderingSettings;
+    value: RenderingSettings[keyof RenderingSettings];
+  }): void {
+    this.facade.updateRenderingSetting(event.key, event.value);
+  }
+
+  updateSceneSetting(event: {
+    key: keyof SceneSettings;
+    value: SceneSettings[keyof SceneSettings];
+  }): void {
+    this.facade.updateSceneSetting(event.key, event.value);
   }
 
   async runBenchmark(): Promise<void> {
