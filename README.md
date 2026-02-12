@@ -1,71 +1,131 @@
-# Graphics Testbed Overview
+# Three.js Graphics Testbed (Angular)
 
-This Angular + Three.js testbed showcases configurable render pipelines (WebGL and WebGPU), post-processing, LOD asset loading, and benchmarking tools for repeatable performance capture.
+An Angular 21 + Three.js graphics sandbox for testing renderer modes, post-processing, scene loading, and benchmark capture. The app is route-level lazy loaded and organized around a thin shell component plus focused services.
 
-## Key Features
+## What this project does
 
-- Dual renderer modes: WebGL and WebGPU (runtime switch with scene reload)
-- lil-gui control panel for renderer, post, and scene settings
-- Progressive LOD loading for GLB collections
-- Capability detection (WebGPU, MSAA, compressed texture formats)
-- Stats overlay plus JSON benchmark export
+- Runs a configurable graphics testbed in WebGL or WebGPU.
+- Loads scene collections by manifest (with LOD support) and falls back to a procedural demo scene when assets are missing.
+- Exposes renderer/scene controls through sidebar panels and lil-gui.
+- Tracks runtime metrics (FPS, CPU/GPU timing, draw calls, triangles, memory).
+- Runs a benchmark camera path and exports a JSON metrics report.
 
-## Local Asset Layout
+## Brief project logic
 
-Provide your own assets in `src/assets/collections` and a manifest index at `src/assets/collections-index.json` (not created by this repo):
+- Testbed shell ([src/app/features/testbed/testbed.component.ts](src/app/features/testbed/testbed.component.ts)) owns UI state/signals, wires child component events, and coordinates services.
+- Runtime setup ([src/app/features/testbed/testbed-runtime.service.ts](src/app/features/testbed/testbed-runtime.service.ts)) builds renderer, scene, camera, controls, composer, and resize behavior.
+- Scene content ([src/app/features/testbed/scene-content.service.ts](src/app/features/testbed/scene-content.service.ts)) handles collection manifests, LOD loading, procedural fallback, and active-group lifecycle.
+- Rendering effects ([src/app/features/testbed/rendering-settings.service.ts](src/app/features/testbed/rendering-settings.service.ts), [src/app/features/testbed/lighting-effects.service.ts](src/app/features/testbed/lighting-effects.service.ts), [src/app/features/testbed/scene-optimization.service.ts](src/app/features/testbed/scene-optimization.service.ts)) apply tone mapping, post-FX toggles, filtering, lens flares, BVH, and environment/LOD adjustments.
+- Metrics + benchmark ([src/app/features/testbed/benchmark.service.ts](src/app/features/testbed/benchmark.service.ts), [src/app/features/testbed/frame-stats-tracker.ts](src/app/features/testbed/frame-stats-tracker.ts), [src/app/features/testbed/inspector.service.ts](src/app/features/testbed/inspector.service.ts)) gather frame stats, benchmark progress, export payload, and scene inspector snapshots.
+- Data/persistence ([src/app/features/testbed/asset.service.ts](src/app/features/testbed/asset.service.ts), [src/app/features/testbed/capabilities.service.ts](src/app/features/testbed/capabilities.service.ts), [src/app/features/testbed/preset.service.ts](src/app/features/testbed/preset.service.ts)) provide IO, hardware capability detection, and preset persistence.
+
+## Architecture diagram
+
+```mermaid
+flowchart TD
+  T[TestbedComponent\nOrchestration Shell]
+
+  subgraph UI[UI Components]
+    Top[Topbar]
+    Side[Sidebar + Panels]
+    View[Viewport]
+    Hud[HUD]
+    Status[Status Bar]
+    GuiDock[GUI Dock]
+  end
+
+  subgraph Core[Core Services]
+    Runtime[TestbedRuntimeService]
+    SceneContent[SceneContentService]
+    RenderCfg[RenderingSettingsService]
+    Lighting[LightingEffectsService]
+    SceneOpt[SceneOptimizationService]
+  end
+
+  subgraph Data[Data + State Services]
+    Assets[AssetService]
+    Caps[CapabilitiesService]
+    Presets[PresetService]
+    Bench[BenchmarkService]
+    Inspect[InspectorService]
+    GuiBridge[GuiBridgeService]
+    Frame[FrameStatsTracker]
+  end
+
+  T --> Top
+  T --> Side
+  T --> View
+  T --> Hud
+  T --> Status
+  T --> GuiDock
+
+  T --> Runtime
+  T --> SceneContent
+  T --> RenderCfg
+  T --> Lighting
+  T --> SceneOpt
+
+  T --> Assets
+  T --> Caps
+  T --> Presets
+  T --> Bench
+  T --> Inspect
+  T --> GuiBridge
+  T --> Frame
+
+  SceneContent --> Assets
+```
+
+## Assets and manifests
+
+The testbed expects a collections index at `/assets/collections-index.json` and optional per-collection manifests. If the index is missing, the app automatically uses a procedural demo scene.
+
+Example collections index:
 
 ```json
 [
-	{
-		"id": "the_shed",
-		"displayName": "The Shed",
-		"manifestUrl": "/assets/collections/the_shed/manifest.json"
-	}
+  {
+    "id": "the_shed",
+    "displayName": "The Shed",
+    "manifestUrl": "/assets/collections/the_shed/manifest.json"
+  }
 ]
 ```
 
-Example manifest structure:
+Example manifest:
 
 ```json
 {
-	"name": "the_shed",
-	"displayName": "The Shed",
-	"thumbnail": "thumbnails/the_shed.png",
-	"lods": [
-		"export/high/the_shed_LOD0.glb",
-		"export/medium/the_shed_LOD1.glb",
-		"export/low/the_shed_LOD2.glb"
-	],
-	"environment": "hdr/the_shed.hdr"
+  "name": "the_shed",
+  "displayName": "The Shed",
+  "thumbnail": "thumbnails/the_shed.png",
+  "lods": [
+    "export/high/the_shed_LOD0.glb",
+    "export/medium/the_shed_LOD1.glb",
+    "export/low/the_shed_LOD2.glb"
+  ],
+  "environment": "hdr/the_shed.hdr"
 }
 ```
 
-If no collections index is available, the app falls back to a procedural demo scene.
+## Development
 
-## Development server
-
-To start a local development server, run:
+Start dev server:
 
 ```bash
-ng serve
+npm start
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+Run tests:
 
-## WebGPU Enablement
+```bash
+npm test
+```
 
-WebGPU requires an enabled browser flag. In Chromium-based browsers, visit `chrome://flags` and enable:
+Build:
 
-- `Unsafe WebGPU`
+```bash
+npm run build
+```
 
-Restart the browser to apply changes.
-
-## Benchmark Output
-
-Use the "Run benchmark" button to replay the camera path. The "Export metrics" action saves a JSON report with:
-
-- Average FPS
-- Minimum FPS
-- Max frame time
-- Draw calls and triangles
-- Memory usage
+Default local URL: [http://localhost:4200/](http://localhost:4200/)
