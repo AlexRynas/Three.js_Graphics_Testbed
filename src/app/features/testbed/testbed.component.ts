@@ -25,7 +25,6 @@ import { RGBShiftShader } from 'three/examples/jsm/shaders/RGBShiftShader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Lensflare, LensflareElement } from 'three/examples/jsm/objects/Lensflare.js';
-import { MeshBVH, acceleratedRaycast, computeBoundsTree, disposeBoundsTree } from 'three-mesh-bvh';
 import GUI from 'lil-gui';
 import {
   CollectionManifest,
@@ -44,6 +43,8 @@ import { FrameStatsTracker, RendererInstance } from './frame-stats-tracker';
 import { GuiBridgeService } from './gui-bridge.service';
 import { InspectorService } from './inspector.service';
 import { PresetService } from './preset.service';
+import { RenderingSettingsService } from './rendering-settings.service';
+import { SceneOptimizationService } from './scene-optimization.service';
 import { StatsSample } from './metrics.model';
 import { CapabilitiesPanelComponent } from './components/panels/capabilities-panel/capabilities-panel.component';
 import { CollectionsPanelComponent } from './components/panels/collections-panel/collections-panel.component';
@@ -90,6 +91,8 @@ export class TestbedComponent implements AfterViewInit {
   private readonly guiBridgeService = inject(GuiBridgeService);
   private readonly inspectorService = inject(InspectorService);
   private readonly presetService = inject(PresetService);
+  private readonly renderingSettingsService = inject(RenderingSettingsService);
+  private readonly sceneOptimizationService = inject(SceneOptimizationService);
   private readonly destroyRef = inject(DestroyRef);
 
   private renderer: RendererInstance | null = null;
@@ -407,7 +410,22 @@ export class TestbedComponent implements AfterViewInit {
     this.composer.addPass(this.chromaticPass);
 
     this.updateComposerSize();
-    this.applyPostProcessing(this.settings());
+    this.renderingSettingsService.applyPostProcessing(
+      {
+        composer: this.composer,
+        fxaaPass: this.fxaaPass,
+        smaaPass: this.smaaPass,
+        taaPass: this.taaPass,
+        ssaoPass: this.ssaoPass,
+        dofPass: this.dofPass,
+        filmPass: this.filmPass,
+        vignettePass: this.vignettePass,
+        chromaticPass: this.chromaticPass,
+      },
+      this.settings(),
+      this.settings().rendererMode,
+      this.getViewportSize(),
+    );
   }
 
   private initFrameStats(): void {
@@ -510,38 +528,47 @@ export class TestbedComponent implements AfterViewInit {
 
     this.updateToneMapping(sceneSettings);
     this.updateControls(sceneSettings);
-    this.applyEnvironmentIntensity(sceneSettings.environmentIntensity);
-    this.updateLodBias(sceneSettings.lodBias);
-    this.applyPostProcessing(settings);
-    this.applyShadowSettings(settings);
+    this.sceneOptimizationService.applyEnvironmentIntensity(
+      this.scene,
+      this.activeThree,
+      sceneSettings.environmentIntensity,
+    );
+    this.sceneOptimizationService.updateLodBias(this.scene, this.activeThree, sceneSettings.lodBias);
+    this.renderingSettingsService.applyPostProcessing(
+      {
+        composer: this.composer,
+        fxaaPass: this.fxaaPass,
+        smaaPass: this.smaaPass,
+        taaPass: this.taaPass,
+        ssaoPass: this.ssaoPass,
+        dofPass: this.dofPass,
+        filmPass: this.filmPass,
+        vignettePass: this.vignettePass,
+        chromaticPass: this.chromaticPass,
+      },
+      settings,
+      this.settings().rendererMode,
+      this.getViewportSize(),
+    );
+    this.renderingSettingsService.applyShadowSettings(this.renderer, settings);
     this.applyLensFlares(settings);
-    this.applyTextureFiltering(settings);
-    this.applyBvh(sceneSettings.bvhEnabled);
-    this.updateUnsupportedStatus(settings);
-  }
-
-  private updateUnsupportedStatus(settings: RenderingSettings): void {
-    const unsupported: string[] = [];
-    const isWebGpu = this.settings().rendererMode === 'webgpu';
-
-    if (isWebGpu) {
-      if (settings.antialiasing === 'fxaa') unsupported.push('FXAA');
-      if (settings.antialiasing === 'smaa') unsupported.push('SMAA');
-      if (settings.antialiasing === 'taa') unsupported.push('TAA');
-      if (settings.ssaoEnabled) unsupported.push('SSAO');
-      if (settings.depthOfField) unsupported.push('Depth of Field');
-      if (settings.chromaticAberration) unsupported.push('Chromatic Aberration');
-      if (settings.filmGrain) unsupported.push('Film Grain');
+    this.renderingSettingsService.applyTextureFiltering(
+      this.renderer,
+      this.scene,
+      this.activeThree,
+      settings,
+      this.capabilitySummary(),
+    );
+    if (this.sceneOptimizationService.applyBvh(this.scene, this.activeThree, sceneSettings.bvhEnabled)) {
+      this.refreshInspector();
     }
-
-    if (settings.ssrEnabled) unsupported.push('SSR');
-    if (settings.globalIllumination) unsupported.push('Global Illumination');
-    if (settings.rayTracing) unsupported.push('Ray Tracing');
-    if (settings.pathTracing) unsupported.push('Path Tracing');
-    if (settings.volumetricLighting) unsupported.push('Volumetric Lighting');
-
-    if (unsupported.length > 0) {
-      this.status.set(`Unsupported in ${this.rendererLabel()}: ${unsupported.join(', ')}`);
+    const unsupported = this.renderingSettingsService.getUnsupportedLabel(
+      settings,
+      this.settings().rendererMode,
+      this.rendererLabel(),
+    );
+    if (unsupported) {
+      this.status.set(unsupported);
     } else if (this.status().startsWith('Unsupported in')) {
       this.status.set('Ready');
     }
@@ -567,21 +594,7 @@ export class TestbedComponent implements AfterViewInit {
   }
 
   private updateToneMapping(sceneSettings: SceneSettings): void {
-    const THREE = this.activeThree;
-    if (!this.renderer || !('toneMapping' in this.renderer)) {
-      return;
-    }
-
-    const toneMapping = sceneSettings.toneMapping;
-    if (toneMapping === 'aces') {
-      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    } else if (toneMapping === 'neutral') {
-      this.renderer.toneMapping = THREE.NeutralToneMapping;
-    } else {
-      this.renderer.toneMapping = THREE.NoToneMapping;
-    }
-
-    this.renderer.toneMappingExposure = sceneSettings.exposure;
+    this.renderingSettingsService.applyToneMapping(this.renderer, this.activeThree, sceneSettings);
   }
 
   private updateControls(sceneSettings: SceneSettings): void {
@@ -613,96 +626,6 @@ export class TestbedComponent implements AfterViewInit {
     }
 
     pmremGenerator.dispose();
-  }
-
-  private applyEnvironmentIntensity(intensity: number): void {
-    const THREE = this.activeThree;
-    if (!this.scene) {
-      return;
-    }
-
-    this.scene.traverse((object: THREE.Object3D) => {
-      if (object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial) {
-        object.material.envMapIntensity = intensity;
-      }
-    });
-  }
-
-  private updateLodBias(bias: number): void {
-    const THREE = this.activeThree;
-    if (!this.scene) {
-      return;
-    }
-
-    this.scene.traverse((object: THREE.Object3D) => {
-      if (object instanceof THREE.LOD) {
-        object.levels.forEach((level, index) => {
-          if (index === 0) {
-            level.distance = 0;
-          } else {
-            level.distance = index * 12 + bias * 3;
-          }
-        });
-      }
-    });
-  }
-
-  private applyPostProcessing(settings: RenderingSettings): void {
-    if (!this.composer) {
-      return;
-    }
-
-    const isWebGpu = this.settings().rendererMode === 'webgpu';
-    const aa = settings.antialiasing;
-    const { width, height } = this.getViewportSize();
-
-    if (this.fxaaPass) {
-      this.fxaaPass.enabled = !isWebGpu && aa === 'fxaa';
-    }
-    if (this.smaaPass) {
-      this.smaaPass.enabled = !isWebGpu && aa === 'smaa';
-      const qualityScale =
-        settings.smaaQuality === 'low' ? 0.75 : settings.smaaQuality === 'high' ? 1.25 : 1;
-      this.smaaPass.setSize(width * qualityScale, height * qualityScale);
-    }
-    if (this.taaPass) {
-      this.taaPass.enabled = !isWebGpu && aa === 'taa';
-      this.taaPass.sampleLevel = Math.max(0, settings.taaSamples - 1);
-    }
-
-    if (this.ssaoPass) {
-      this.ssaoPass.enabled = !isWebGpu && settings.ssaoEnabled && settings.screenSpaceShadows;
-      const qualityBoost =
-        settings.ssaoQuality === 'high' ? 1.4 : settings.ssaoQuality === 'low' ? 0.8 : 1;
-      this.ssaoPass.kernelRadius = settings.ssaoRadius * qualityBoost;
-    }
-
-    if (this.dofPass) {
-      this.dofPass.enabled = !isWebGpu && settings.depthOfField;
-      this.dofPass.materialBokeh.uniforms['focus'].value = settings.dofFocus;
-      this.dofPass.materialBokeh.uniforms['aperture'].value = settings.dofAperture;
-      this.dofPass.materialBokeh.uniforms['maxblur'].value = settings.dofMaxBlur;
-    }
-
-    if (this.filmPass) {
-      this.filmPass.enabled = !isWebGpu && settings.filmGrain;
-    }
-
-    if (this.vignettePass) {
-      this.vignettePass.enabled = settings.vignette;
-    }
-
-    if (this.chromaticPass) {
-      this.chromaticPass.enabled = !isWebGpu && settings.chromaticAberration;
-    }
-  }
-
-  private applyShadowSettings(settings: RenderingSettings): void {
-    if (!this.renderer || !('shadowMap' in this.renderer)) {
-      return;
-    }
-
-    this.renderer.shadowMap.enabled = settings.contactShadows;
   }
 
   private applyLensFlares(settings: RenderingSettings): void {
@@ -755,83 +678,6 @@ export class TestbedComponent implements AfterViewInit {
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
     return texture;
-  }
-
-  private applyTextureFiltering(settings: RenderingSettings): void {
-    const THREE = this.activeThree;
-    if (!this.renderer) {
-      return;
-    }
-
-    const maxAniso = this.capabilitySummary().maxAnisotropy;
-    const targetAniso = Math.min(settings.anisotropy, maxAniso || 1);
-
-    this.scene?.traverse((object: THREE.Object3D) => {
-      if (object instanceof THREE.Mesh) {
-        const material = object.material;
-        if (material instanceof THREE.MeshStandardMaterial) {
-          const maps: Array<THREE.Texture | null> = [
-            material.map,
-            material.normalMap,
-            material.roughnessMap,
-            material.metalnessMap,
-            material.emissiveMap,
-          ];
-
-          maps.forEach((texture) => {
-            if (!texture) {
-              return;
-            }
-
-            if (settings.textureFiltering === 'linear') {
-              texture.minFilter = THREE.LinearFilter;
-              texture.magFilter = THREE.LinearFilter;
-              texture.anisotropy = 1;
-            } else if (settings.textureFiltering === 'trilinear') {
-              texture.minFilter = THREE.LinearMipmapLinearFilter;
-              texture.magFilter = THREE.LinearFilter;
-              texture.anisotropy = 1;
-            } else {
-              texture.minFilter = THREE.LinearMipmapLinearFilter;
-              texture.magFilter = THREE.LinearFilter;
-              texture.anisotropy = targetAniso;
-            }
-
-            texture.needsUpdate = true;
-          });
-        }
-      }
-    });
-  }
-
-  private applyBvh(enabled: boolean): void {
-    const THREE = this.activeThree;
-    if (!enabled || !this.scene) {
-      return;
-    }
-
-    const geometryProto = THREE.BufferGeometry.prototype as THREE.BufferGeometry & {
-      computeBoundsTree?: () => void;
-      disposeBoundsTree?: () => void;
-    };
-    geometryProto.computeBoundsTree = computeBoundsTree;
-    geometryProto.disposeBoundsTree = disposeBoundsTree;
-
-    const meshProto = THREE.Mesh.prototype as THREE.Mesh & {
-      raycast: typeof acceleratedRaycast;
-    };
-    meshProto.raycast = acceleratedRaycast;
-
-    this.scene.traverse((object: THREE.Object3D) => {
-      if (object instanceof THREE.Mesh) {
-        const geometry = object.geometry as THREE.BufferGeometry & { boundsTree?: MeshBVH };
-        if (!geometry.boundsTree) {
-          geometry.computeBoundsTree?.();
-        }
-      }
-    });
-
-    this.refreshInspector();
   }
 
   private async loadCollection(collection: CollectionRef): Promise<void> {
