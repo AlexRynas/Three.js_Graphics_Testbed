@@ -33,7 +33,10 @@
 
       <app-inspector-panel [inspector]="inspector()"></app-inspector-panel>
 
-      <app-feature-toggles-panel [features]="featureRows()"></app-feature-toggles-panel>
+      <app-feature-toggles-panel
+        [settings]="settings()"
+        [capabilities]="capabilitySummary()"
+      ></app-feature-toggles-panel>
     </app-sidebar>
   </main>
 
