@@ -47,6 +47,7 @@ import { RenderingSettingsService } from './rendering-settings.service';
 import { SceneContentService } from './scene-content.service';
 import { SceneOptimizationService } from './scene-optimization.service';
 import { StatsSample } from './metrics.model';
+import { TestbedRuntimeService } from './testbed-runtime.service';
 import { CapabilitiesPanelComponent } from './components/panels/capabilities-panel/capabilities-panel.component';
 import { CollectionsPanelComponent } from './components/panels/collections-panel/collections-panel.component';
 import { FeatureTogglesPanelComponent } from './components/panels/feature-toggles-panel/feature-toggles-panel.component';
@@ -96,6 +97,7 @@ export class TestbedComponent implements AfterViewInit {
   private readonly renderingSettingsService = inject(RenderingSettingsService);
   private readonly sceneContentService = inject(SceneContentService);
   private readonly sceneOptimizationService = inject(SceneOptimizationService);
+  private readonly runtimeService = inject(TestbedRuntimeService);
   private readonly destroyRef = inject(DestroyRef);
 
   private renderer: RendererInstance | null = null;
@@ -269,89 +271,28 @@ export class TestbedComponent implements AfterViewInit {
   }
 
   private resolveRendererMode(requested: RenderingSettings['rendererMode']): 'webgl' | 'webgpu' {
-    const caps = this.capabilitySummary();
-    if (requested === 'webgpu' && !caps.webgpu) {
-      return 'webgl';
-    }
-    return requested;
+    return this.runtimeService.resolveRendererMode(requested, this.capabilitySummary());
   }
 
   private setThreeModule(mode: 'webgl' | 'webgpu'): void {
-    this.activeThree = mode === 'webgpu' ? (THREE_WEBGPU as unknown as typeof THREE) : THREE;
+    this.activeThree = this.runtimeService.getThreeModule(mode);
   }
 
   private async createRenderer(canvas: HTMLCanvasElement, mode: 'webgl' | 'webgpu'): Promise<void> {
     this.disposeRenderer();
-    this.setThreeModule(mode);
-    const THREE = this.activeThree;
-
-    const hasWebGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
-    if (mode === 'webgpu' && hasWebGpu) {
-      const renderer = new THREE_WEBGPU.WebGPURenderer({ canvas, antialias: false });
-      await renderer.init();
-      renderer.setPixelRatio(window.devicePixelRatio || 1);
-      renderer.outputColorSpace = THREE_WEBGPU.SRGBColorSpace;
-      this.renderer = renderer;
-      this.rendererLabel.set('WebGPU');
-      this.usingMsaa = false;
-      this.currentMode = 'webgpu';
-      return;
-    }
-
-    const msaaEnabled = this.settings().antialiasing === 'msaa';
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: msaaEnabled,
-      powerPreference: 'high-performance',
-    });
-    renderer.setPixelRatio(window.devicePixelRatio || 1);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.renderer = renderer;
-    this.rendererLabel.set('WebGL');
-    this.usingMsaa = msaaEnabled;
-    this.currentMode = 'webgl';
+    const result = await this.runtimeService.createRenderer(canvas, mode, this.settings());
+    this.activeThree = result.threeModule;
+    this.renderer = result.renderer;
+    this.rendererLabel.set(result.rendererLabel);
+    this.usingMsaa = result.usingMsaa;
+    this.currentMode = result.currentMode;
   }
 
   private initScene(): void {
-    const THREE = this.activeThree;
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#0b1117');
-
-    this.camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200);
-    this.camera.position.set(5, 4.5, 8);
-
-    const grid = new THREE.GridHelper(40, 40, 0x1b3b3b, 0x10222c);
-    grid.position.y = -0.01;
-    this.scene.add(grid);
-
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(12, 64),
-      new THREE.MeshStandardMaterial({
-        color: 0x0f1a22,
-        metalness: 0.1,
-        roughness: 0.7,
-      }),
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    this.scene.add(floor);
-
-    const ambient = new THREE.AmbientLight(0x9fb3c8, 0.35);
-    this.scene.add(ambient);
-
-    this.primaryLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    this.primaryLight.position.set(6, 8, 4);
-    this.primaryLight.castShadow = true;
-    this.primaryLight.shadow.mapSize.set(2048, 2048);
-    this.primaryLight.shadow.camera.near = 1;
-    this.primaryLight.shadow.camera.far = 40;
-    this.scene.add(this.primaryLight);
-
-    const rimLight = new THREE.PointLight(0x45e3c2, 0.9, 40);
-    rimLight.position.set(-5, 4, -6);
-    this.scene.add(rimLight);
+    const setup = this.runtimeService.createScene(this.activeThree);
+    this.scene = setup.scene;
+    this.camera = setup.camera;
+    this.primaryLight = setup.primaryLight;
 
     this.applyEnvironment(null);
   }
@@ -361,56 +302,31 @@ export class TestbedComponent implements AfterViewInit {
       return;
     }
 
-    const controls = new OrbitControls(this.camera, this.viewportShell().canvas);
-    controls.enableDamping = true;
-    controls.autoRotate = this.sceneSettings().autoRotate;
-    controls.autoRotateSpeed = 0.5;
-    this.controls = controls;
+    this.controls = this.runtimeService.createControls(
+      this.camera,
+      this.viewportShell().canvas,
+      this.sceneSettings().autoRotate,
+    );
   }
 
   private initComposer(): void {
-    const THREE = this.activeThree;
-    if (!this.renderer || !this.scene || !this.camera) {
-      return;
-    }
-
-    if (!(this.renderer instanceof THREE.WebGLRenderer)) {
-      this.composer = null;
-      return;
-    }
-
-    const renderer = this.renderer as THREE.WebGLRenderer;
-    this.composer = new EffectComposer(renderer);
-    this.renderPass = new RenderPass(this.scene, this.camera);
-    this.composer.addPass(this.renderPass);
-
-    this.fxaaPass = new ShaderPass(FXAAShader);
-    this.composer.addPass(this.fxaaPass);
-
-    this.smaaPass = new SMAAPass();
-    this.composer.addPass(this.smaaPass);
-
-    this.taaPass = new TAARenderPass(this.scene, this.camera);
-    this.composer.addPass(this.taaPass);
-
-    this.ssaoPass = new SSAOPass(this.scene, this.camera, 1, 1);
-    this.composer.addPass(this.ssaoPass);
-
-    this.dofPass = new BokehPass(this.scene, this.camera, {
-      focus: this.settings().dofFocus,
-      aperture: this.settings().dofAperture,
-      maxblur: this.settings().dofMaxBlur,
-    });
-    this.composer.addPass(this.dofPass);
-
-    this.filmPass = new FilmPass(0.25, false);
-    this.composer.addPass(this.filmPass);
-
-    this.vignettePass = new ShaderPass(VignetteShader);
-    this.composer.addPass(this.vignettePass);
-
-    this.chromaticPass = new ShaderPass(RGBShiftShader);
-    this.composer.addPass(this.chromaticPass);
+    const bundle = this.runtimeService.createComposer(
+      this.renderer,
+      this.scene,
+      this.camera,
+      this.activeThree,
+      this.settings(),
+    );
+    this.composer = bundle.composer;
+    this.renderPass = bundle.renderPass;
+    this.fxaaPass = bundle.fxaaPass;
+    this.smaaPass = bundle.smaaPass;
+    this.taaPass = bundle.taaPass;
+    this.ssaoPass = bundle.ssaoPass;
+    this.dofPass = bundle.dofPass;
+    this.filmPass = bundle.filmPass;
+    this.vignettePass = bundle.vignettePass;
+    this.chromaticPass = bundle.chromaticPass;
 
     this.updateComposerSize();
     this.renderingSettingsService.applyPostProcessing(
@@ -451,48 +367,40 @@ export class TestbedComponent implements AfterViewInit {
   }
 
   private updateSize(): void {
-    if (!this.renderer || !this.camera) {
-      return;
-    }
-
-    const { clientWidth, clientHeight } = this.viewportShell().viewport;
-    if (clientWidth === 0 || clientHeight === 0) {
-      return;
-    }
-
-    this.camera.aspect = clientWidth / clientHeight;
-    this.camera.updateProjectionMatrix();
-    this.renderer.setSize(clientWidth, clientHeight, false);
-    this.updateComposerSize();
+    this.runtimeService.updateSize(this.renderer, this.camera, this.viewportShell().viewport, {
+      composer: this.composer,
+      renderPass: this.renderPass,
+      fxaaPass: this.fxaaPass,
+      smaaPass: this.smaaPass,
+      taaPass: this.taaPass,
+      ssaoPass: this.ssaoPass,
+      dofPass: this.dofPass,
+      filmPass: this.filmPass,
+      vignettePass: this.vignettePass,
+      chromaticPass: this.chromaticPass,
+    });
   }
 
   private updateComposerSize(): void {
-    if (!this.composer) {
-      return;
-    }
-
-    const { width, height } = this.getViewportSize();
-    this.composer.setSize(width, height);
-
-    if (this.fxaaPass) {
-      this.fxaaPass.material.uniforms['resolution'].value.set(1 / width, 1 / height);
-    }
-
-    if (this.smaaPass) {
-      this.smaaPass.setSize(width, height);
-    }
-
-    if (this.ssaoPass) {
-      this.ssaoPass.setSize(width, height);
-    }
+    this.runtimeService.updateComposerSize(
+      {
+        composer: this.composer,
+        renderPass: this.renderPass,
+        fxaaPass: this.fxaaPass,
+        smaaPass: this.smaaPass,
+        taaPass: this.taaPass,
+        ssaoPass: this.ssaoPass,
+        dofPass: this.dofPass,
+        filmPass: this.filmPass,
+        vignettePass: this.vignettePass,
+        chromaticPass: this.chromaticPass,
+      },
+      this.viewportShell().viewport,
+    );
   }
 
   private getViewportSize(): { width: number; height: number } {
-    const { clientWidth, clientHeight } = this.viewportShell().viewport;
-    return {
-      width: Math.max(1, clientWidth),
-      height: Math.max(1, clientHeight),
-    };
+    return this.runtimeService.getViewportSize(this.viewportShell().viewport);
   }
 
   private buildGui(): void {
