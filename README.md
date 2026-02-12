@@ -130,4 +130,8 @@ Build:
 npm run build
 ```
 
+## External references
+
+- Three.js WebGPU parity/status tracker: https://github.com/mrdoob/three.js/issues/29295 (last verified: 2026-02-12)
+
 Default local URL: [http://localhost:4200/](http://localhost:4200/)

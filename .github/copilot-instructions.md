@@ -54,3 +54,13 @@ You are an expert in TypeScript, Angular, and scalable web application developme
 - Design services around a single responsibility
 - Use the `providedIn: 'root'` option for singleton services
 - Use the `inject()` function instead of constructor injection
+
+## Validation
+
+- Tests are not implemented in this project.
+- To verify functionality, run `npm run build`.
+
+## External References
+
+- Three.js WebGPU parity/status tracker: https://github.com/mrdoob/three.js/issues/29295
+- Last verified: 2026-02-12
