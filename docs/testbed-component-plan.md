@@ -3,19 +3,19 @@
 ## Structure
 
 ### Feature Components (Testbed)
-- TestbedTopbar — brand/title + action buttons; inputs: status, canBenchmark; outputs: runBenchmark, exportMetrics, toggleGui
+- Topbar — brand/title + action buttons; inputs: status, canBenchmark; outputs: runBenchmark, exportMetrics, toggleGui
 	- Template mapping: header.topbar, .brand, .top-actions
 	- Uses: PillButton (Run benchmark, Export metrics, Toggle GUI)
-- TestbedViewport — canvas container + overlays; inputs: rendererLabel, metrics, status, benchmark
+- Viewport — canvas container + overlays; inputs: rendererLabel, metrics, status, benchmark
 	- Template mapping: .viewport with canvas, hud, status-bar
-	- Uses: TestbedHud, TestbedStatusBar
-- TestbedHud — metrics overlay panel; inputs: rendererLabel, metrics
+	- Uses: Hud, StatusBar
+- Hud — metrics overlay panel; inputs: rendererLabel, metrics
 	- Template mapping: .hud with repeated .hud-row items
 	- Uses: HudList (or repeated HudListRow), handles GPU n/a fallback
-- TestbedStatusBar — status text + benchmark progress chip; inputs: status, benchmark
+- StatusBar — status text + benchmark progress chip; inputs: status, benchmark
 	- Template mapping: .status-bar with optional .status-chip
 	- Uses: PillButton or compact chip styling (if shared chip is added later)
-- TestbedSidebar — wrapper for right-side panel sections; projected content or composed children
+- Sidebar — wrapper for right-side panel sections; projected content or composed children
 	- Template mapping: aside.panel with multiple section blocks
 	- Uses: Panel, SectionHeader for each section title
 - CollectionsPanel — list of collections with selection; inputs: collections, activeId; outputs: select
@@ -56,7 +56,7 @@
 - Check for any errors related to the changes and fix them if any.
 
 ### Iteration 2: Layout Shell
-- Create TestbedTopbar, TestbedViewport, TestbedSidebar, GuiDock
+- Create Topbar, Viewport, Sidebar, GuiDock
 - Wire inputs/outputs and move template sections
 - Replace raw buttons/headers with shared UI components
 - Move top-level layout styles
@@ -73,7 +73,7 @@
 - Check for any errors related to the changes and fix them if any.
 
 ### Iteration 4: HUD
-- Create TestbedHud and TestbedStatusBar
+- Create Hud and StatusBar
 - Hook up metrics and status bindings
 - Use HudList for consistent label/value rows
 - Move HUD-related styles
