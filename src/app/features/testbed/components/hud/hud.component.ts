@@ -1,18 +1,8 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
+import { FrameMetrics } from '../../metrics.model';
 import { HudListComponent, HudListRow } from '../../../../shared/ui/hud-list/hud-list.component';
-
-type FrameMetrics = {
-  fps: number;
-  minFps: number;
-  cpuMs: number;
-  maxFrameTime: number;
-  drawCalls: number;
-  triangles: number;
-  memoryMb: number;
-  gpuMs: number | null;
-};
 
 @Component({
   selector: 'app-hud',

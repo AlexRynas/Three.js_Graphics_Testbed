@@ -29,9 +29,9 @@
         (save)="savePreset()"
       ></app-presets-panel>
 
-      <app-capabilities-panel [rows]="capabilityRows()"></app-capabilities-panel>
+      <app-capabilities-panel [capabilities]="capabilitySummary()"></app-capabilities-panel>
 
-      <app-inspector-panel [rows]="inspectorRows()"></app-inspector-panel>
+      <app-inspector-panel [inspector]="inspector()"></app-inspector-panel>
 
       <app-feature-toggles-panel [features]="featureRows()"></app-feature-toggles-panel>
     </app-sidebar>

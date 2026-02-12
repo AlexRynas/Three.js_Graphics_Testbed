@@ -22,7 +22,7 @@
       class="field-input"
       type="text"
       [value]="presetName()"
-      (input)="updateName.emit($event)"
+      (input)="onNameInput($event)"
       placeholder="Name your preset"
     />
   </label>

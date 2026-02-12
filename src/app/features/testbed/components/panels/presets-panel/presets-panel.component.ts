@@ -28,6 +28,11 @@ export class PresetsPanelComponent {
 
   readonly apply = output<Preset>();
   readonly delete = output<Preset>();
-  readonly updateName = output<Event>();
+  readonly updateName = output<string>();
   readonly save = output<void>();
+
+  onNameInput(event: Event): void {
+    const input = event.target as HTMLInputElement | null;
+    this.updateName.emit(input?.value ?? '');
+  }
 }

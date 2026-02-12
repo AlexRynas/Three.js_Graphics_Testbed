@@ -1,5 +1,6 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
+import { InspectorSnapshot } from '../../../controls.model';
 import { PanelComponent } from '../../../../../shared/ui/panel/panel.component';
 import { SectionHeaderComponent } from '../../../../../shared/ui/section-header/section-header.component';
 import { StatGridComponent, StatGridRow } from '../../../../../shared/ui/stat-grid/stat-grid.component';
@@ -12,5 +13,16 @@ import { StatGridComponent, StatGridRow } from '../../../../../shared/ui/stat-gr
   imports: [PanelComponent, SectionHeaderComponent, StatGridComponent],
 })
 export class InspectorPanelComponent {
-  readonly rows = input<StatGridRow[]>([]);
+  readonly inspector = input.required<InspectorSnapshot>();
+
+  readonly rows = computed<StatGridRow[]>(() => {
+    const inspector = this.inspector();
+    return [
+      { key: 'meshes', label: 'Meshes', value: inspector.meshCount },
+      { key: 'materials', label: 'Materials', value: inspector.materialCount },
+      { key: 'textures', label: 'Textures', value: inspector.textureCount },
+      { key: 'lod', label: 'LOD Nodes', value: inspector.lodCount },
+      { key: 'bvh', label: 'BVH Meshes', value: inspector.bvhCount },
+    ];
+  });
 }

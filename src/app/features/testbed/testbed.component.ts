@@ -40,8 +40,10 @@ import {
   defaultSceneSettings,
 } from './controls.model';
 import { AssetService } from './asset.service';
+import { BenchmarkService } from './benchmark.service';
 import { CapabilitiesService } from './capabilities.service';
 import { PresetService } from './preset.service';
+import { StatsSample } from './metrics.model';
 import { CapabilitiesPanelComponent } from './components/panels/capabilities-panel/capabilities-panel.component';
 import { CollectionsPanelComponent } from './components/panels/collections-panel/collections-panel.component';
 import { FeatureTogglesPanelComponent } from './components/panels/feature-toggles-panel/feature-toggles-panel.component';
@@ -55,29 +57,6 @@ import { TopbarComponent } from './components/topbar/topbar.component';
 import { ViewportComponent } from './components/viewport/viewport.component';
 
 type RendererInstance = THREE.WebGLRenderer | THREE_WEBGPU.WebGPURenderer;
-type StatsSample = {
-  fps: number;
-  cpu: number;
-  gpu: number | null;
-};
-
-interface FrameMetrics {
-  fps: number;
-  minFps: number;
-  cpuMs: number;
-  maxFrameTime: number;
-  drawCalls: number;
-  triangles: number;
-  memoryMb: number;
-  gpuMs: number | null;
-}
-
-interface BenchmarkState {
-  active: boolean;
-  progress: number;
-  sampleCount: number;
-  duration: number;
-}
 
 type Webgl2TimerQueryExt = {
   TIME_ELAPSED_EXT: number;
@@ -297,6 +276,7 @@ export class TestbedComponent implements AfterViewInit {
   readonly guiDock = viewChild.required(GuiDockComponent);
 
   private readonly assetService = inject(AssetService);
+  private readonly benchmarkService = inject(BenchmarkService);
   private readonly capabilitiesService = inject(CapabilitiesService);
   private readonly presetService = inject(PresetService);
   private readonly destroyRef = inject(DestroyRef);
@@ -329,10 +309,6 @@ export class TestbedComponent implements AfterViewInit {
   private usingMsaa = true;
   private currentMode: 'webgl' | 'webgpu' = 'webgl';
 
-  private benchmarkFrames: number[] = [];
-  private benchmarkFrameTimes: number[] = [];
-  private benchmarkStart = 0;
-
   readonly status = signal('Initializing renderer...');
   readonly rendererLabel = signal('WebGL');
   readonly guiVisible = signal(true);
@@ -348,53 +324,10 @@ export class TestbedComponent implements AfterViewInit {
     bvhCount: 0,
   });
   readonly presetName = signal('Custom');
-  readonly metrics = signal<FrameMetrics>({
-    fps: 0,
-    minFps: 0,
-    cpuMs: 0,
-    maxFrameTime: 0,
-    drawCalls: 0,
-    triangles: 0,
-    memoryMb: 0,
-    gpuMs: null,
-  });
-  readonly benchmark = signal<BenchmarkState>({
-    active: false,
-    progress: 0,
-    sampleCount: 0,
-    duration: 12,
-  });
+  readonly metrics = this.benchmarkService.metrics;
+  readonly benchmark = this.benchmarkService.benchmark;
 
   readonly capabilitySummary = this.capabilitiesService.capabilities;
-
-  readonly capabilityRows = computed(() => {
-    const caps = this.capabilitySummary();
-    return [
-      { key: 'webgpu', label: 'WebGPU', value: caps.webgpu ? 'Available' : 'Unavailable' },
-      { key: 'webgl2', label: 'WebGL2', value: caps.webgl2 ? 'Yes' : 'No' },
-      { key: 'maxTextureSize', label: 'Max Texture', value: `${caps.maxTextureSize}px` },
-      { key: 'maxAnisotropy', label: 'Max Anisotropy', value: `${caps.maxAnisotropy}x` },
-      { key: 'msaa', label: 'MSAA Samples', value: `${caps.msaaSamples}` },
-      { key: 'shaderPrecision', label: 'Shader Precision', value: caps.shaderPrecision },
-      {
-        key: 'compressed',
-        label: 'Compressed Tex',
-        value: caps.compressedTextures.length > 0 ? caps.compressedTextures.join(', ') : 'None',
-      },
-      { key: 'gpuTimer', label: 'GPU Timer', value: caps.gpuTimerQuery ? 'Yes' : 'No' },
-    ];
-  });
-
-  readonly inspectorRows = computed(() => {
-    const inspector = this.inspector();
-    return [
-      { key: 'meshes', label: 'Meshes', value: inspector.meshCount },
-      { key: 'materials', label: 'Materials', value: inspector.materialCount },
-      { key: 'textures', label: 'Textures', value: inspector.textureCount },
-      { key: 'lod', label: 'LOD Nodes', value: inspector.lodCount },
-      { key: 'bvh', label: 'BVH Meshes', value: inspector.bvhCount },
-    ];
-  });
 
   readonly featureRows = computed<FeatureSupport[]>(() => {
     const caps = this.capabilitySummary();
@@ -462,11 +395,8 @@ export class TestbedComponent implements AfterViewInit {
     this.presetService.deletePreset(preset.name);
   }
 
-  updatePresetName(event: Event): void {
-    const input = event.target as HTMLInputElement | null;
-    if (input) {
-      this.presetName.set(input.value);
-    }
+  updatePresetName(name: string): void {
+    this.presetName.set(name);
   }
 
   savePreset(): void {
@@ -483,24 +413,22 @@ export class TestbedComponent implements AfterViewInit {
   }
 
   async runBenchmark(): Promise<void> {
-    if (this.benchmark().active) {
+    if (!this.benchmarkService.startBenchmark()) {
       return;
     }
 
     this.status.set('Running benchmark path...');
-    this.benchmarkFrames = [];
-    this.benchmarkFrameTimes = [];
-    this.benchmarkStart = performance.now();
-    this.benchmark.set({
-      active: true,
-      progress: 0,
-      sampleCount: 0,
-      duration: this.benchmark().duration,
-    });
   }
 
   exportMetrics(): void {
-    const result = this.buildBenchmarkResult();
+    const result = this.benchmarkService.buildBenchmarkResult({
+      renderer: this.rendererLabel(),
+      preset: this.presetName(),
+      settings: {
+        rendering: this.settings(),
+        scene: this.sceneSettings(),
+      },
+    });
     if (!result) {
       return;
     }
@@ -1494,62 +1422,33 @@ export class TestbedComponent implements AfterViewInit {
       return;
     }
 
-    const stats = this.latestStats;
-    const fps = stats ? stats.fps : 0;
-    const cpuMs = stats ? stats.cpu : 0;
-    const current = this.metrics();
-
     const info = this.renderer.info;
     const perf = performance as Performance & { memory?: { usedJSHeapSize: number } };
     const memoryMb = perf.memory
       ? Math.round((perf.memory.usedJSHeapSize / 1024 / 1024) * 10) / 10
       : 0;
 
-    this.metrics.set({
-      fps: Math.round(fps),
-      minFps: current.minFps === 0 ? Math.round(fps) : Math.min(current.minFps, Math.round(fps)),
-      cpuMs: Math.round(cpuMs * 100) / 100,
-      maxFrameTime: Math.max(current.maxFrameTime, cpuMs),
-      drawCalls: info.render.calls,
-      triangles: info.render.triangles,
+    this.benchmarkService.updateMetrics(
+      this.latestStats,
+      {
+        drawCalls: info.render.calls,
+        triangles: info.render.triangles,
+      },
       memoryMb,
-      gpuMs: stats?.gpu ?? null,
-    });
+    );
   }
 
   private updateBenchmarkPath(time: number): void {
-    const elapsed = (time - this.benchmarkStart) / 1000;
-    const duration = this.benchmark().duration;
+    const { progress, completed } = this.benchmarkService.updateBenchmarkProgress(time);
+    this.moveCameraAlongPath(progress);
 
-    const t = Math.min(elapsed / duration, 1);
-    this.moveCameraAlongPath(t);
-
-    this.benchmark.set({
-      active: t < 1,
-      progress: t,
-      sampleCount: this.benchmarkFrames.length,
-      duration,
-    });
-
-    if (t >= 1) {
+    if (completed) {
       this.status.set('Benchmark complete. Metrics ready to export.');
     }
   }
 
   private recordBenchmarkSample(): void {
-    if (!this.latestStats) {
-      return;
-    }
-
-    this.benchmarkFrames.push(this.latestStats.fps);
-    this.benchmarkFrameTimes.push(this.latestStats.cpu);
-    const current = this.benchmark();
-    this.benchmark.set({
-      active: current.active,
-      progress: current.progress,
-      sampleCount: this.benchmarkFrames.length,
-      duration: current.duration,
-    });
+    this.benchmarkService.recordBenchmarkSample(this.latestStats);
   }
 
   private moveCameraAlongPath(t: number): void {
@@ -1565,34 +1464,6 @@ export class TestbedComponent implements AfterViewInit {
       Math.sin(angle) * radius,
     );
     this.controls.target.set(0, 1.2, 0);
-  }
-
-  private buildBenchmarkResult(): Record<string, unknown> | null {
-    if (this.benchmarkFrames.length === 0) {
-      return null;
-    }
-
-    const avgFps =
-      this.benchmarkFrames.reduce((sum, value) => sum + value, 0) / this.benchmarkFrames.length;
-    const minFps = Math.min(...this.benchmarkFrames);
-    const maxFrameTime = Math.max(...this.benchmarkFrameTimes);
-    const info = this.renderer?.info;
-
-    return {
-      renderer: this.rendererLabel(),
-      preset: this.presetName(),
-      avgFps: Math.round(avgFps),
-      minFps: Math.round(minFps),
-      maxFrameTime: Math.round(maxFrameTime * 100) / 100,
-      drawCalls: info?.render.calls ?? 0,
-      triangles: info?.render.triangles ?? 0,
-      memoryMb: this.metrics().memoryMb,
-      gpuMs: this.metrics().gpuMs,
-      settings: {
-        rendering: this.settings(),
-        scene: this.sceneSettings(),
-      },
-    };
   }
 
   private disposeRenderer(): void {

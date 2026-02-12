@@ -1,12 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
-type BenchmarkState = {
-  active: boolean;
-  progress: number;
-  sampleCount: number;
-  duration: number;
-};
+import { BenchmarkState } from '../../metrics.model';
 
 @Component({
   selector: 'app-status-bar',
