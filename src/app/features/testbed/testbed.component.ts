@@ -23,8 +23,7 @@ import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { RGBShiftShader } from 'three/examples/jsm/shaders/RGBShiftShader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { Lensflare, LensflareElement } from 'three/examples/jsm/objects/Lensflare.js';
+import { Lensflare } from 'three/examples/jsm/objects/Lensflare.js';
 import GUI from 'lil-gui';
 import {
   CollectionManifest,
@@ -42,8 +41,10 @@ import { CapabilitiesService } from './capabilities.service';
 import { FrameStatsTracker, RendererInstance } from './frame-stats-tracker';
 import { GuiBridgeService } from './gui-bridge.service';
 import { InspectorService } from './inspector.service';
+import { LightingEffectsService } from './lighting-effects.service';
 import { PresetService } from './preset.service';
 import { RenderingSettingsService } from './rendering-settings.service';
+import { SceneContentService } from './scene-content.service';
 import { SceneOptimizationService } from './scene-optimization.service';
 import { StatsSample } from './metrics.model';
 import { CapabilitiesPanelComponent } from './components/panels/capabilities-panel/capabilities-panel.component';
@@ -90,8 +91,10 @@ export class TestbedComponent implements AfterViewInit {
   private readonly capabilitiesService = inject(CapabilitiesService);
   private readonly guiBridgeService = inject(GuiBridgeService);
   private readonly inspectorService = inject(InspectorService);
+  private readonly lightingEffectsService = inject(LightingEffectsService);
   private readonly presetService = inject(PresetService);
   private readonly renderingSettingsService = inject(RenderingSettingsService);
+  private readonly sceneContentService = inject(SceneContentService);
   private readonly sceneOptimizationService = inject(SceneOptimizationService);
   private readonly destroyRef = inject(DestroyRef);
 
@@ -606,221 +609,44 @@ export class TestbedComponent implements AfterViewInit {
   }
 
   private applyEnvironment(hdrTexture: THREE.Texture | null): void {
-    const THREE = this.activeThree;
-    if (!this.scene || !(this.renderer instanceof THREE.WebGLRenderer)) {
-      return;
-    }
-
-    const pmremGenerator = new THREE.PMREMGenerator(this.renderer as THREE.WebGLRenderer);
-    pmremGenerator.compileEquirectangularShader();
-
-    if (hdrTexture) {
-      const envMap = pmremGenerator.fromEquirectangular(hdrTexture).texture;
-      this.scene.environment = envMap;
-      this.scene.background = new THREE.Color('#070b10');
-      hdrTexture.dispose();
-    } else {
-      const envMap = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
-      this.scene.environment = envMap;
-      this.scene.background = new THREE.Color('#0b1117');
-    }
-
-    pmremGenerator.dispose();
+    this.lightingEffectsService.applyEnvironment(
+      this.scene,
+      this.renderer,
+      this.activeThree,
+      hdrTexture,
+    );
   }
 
   private applyLensFlares(settings: RenderingSettings): void {
-    if (!this.primaryLight) {
-      return;
-    }
-
-    if (settings.lensFlares && !this.lensflare) {
-      const flare = new Lensflare();
-      flare.addElement(new LensflareElement(this.createFlareTexture('#f7b545'), 96, 0));
-      flare.addElement(new LensflareElement(this.createFlareTexture('#45e3c2'), 128, 0.4));
-      this.primaryLight.add(flare);
-      this.lensflare = flare;
-    }
-
-    if (!settings.lensFlares && this.lensflare) {
-      this.primaryLight.remove(this.lensflare);
-      if ('dispose' in this.lensflare) {
-        this.lensflare.dispose();
-      }
-      this.lensflare = null;
-    }
-  }
-
-  private createFlareTexture(color: string): THREE.Texture {
-    const THREE = this.activeThree;
-    const size = 128;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const context = canvas.getContext('2d');
-    if (!context) {
-      return new THREE.Texture();
-    }
-
-    const gradient = context.createRadialGradient(
-      size / 2,
-      size / 2,
-      8,
-      size / 2,
-      size / 2,
-      size / 2,
+    this.lensflare = this.lightingEffectsService.syncLensFlares(
+      this.primaryLight,
+      this.lensflare,
+      settings.lensFlares,
+      this.activeThree,
     );
-    gradient.addColorStop(0, '#ffffff');
-    gradient.addColorStop(0.4, color);
-    gradient.addColorStop(1, 'rgba(0,0,0,0)');
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, size, size);
-
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    return texture;
   }
 
   private async loadCollection(collection: CollectionRef): Promise<void> {
-    const THREE = this.activeThree;
     this.status.set(`Loading collection: ${collection.displayName}...`);
-    this.clearActiveGroup();
+    const result = await this.sceneContentService.loadCollection({
+      collection,
+      scene: this.scene,
+      threeModule: this.activeThree,
+      sceneSettings: this.sceneSettings(),
+      activeGroup: this.activeGroup,
+      applyEnvironment: (hdrTexture) => this.applyEnvironment(hdrTexture),
+    });
 
-    const manifest = collection.manifestUrl
-      ? await this.assetService.loadManifest(collection.manifestUrl)
-      : null;
+    this.currentManifest = result.manifest;
+    this.activeGroup = result.activeGroup;
+    this.refreshInspector();
 
-    this.currentManifest = manifest;
-
-    if (!manifest || !manifest.lods || manifest.lods.length === 0) {
-      this.buildProceduralScene();
+    if (result.procedural) {
       this.status.set('Procedural scene loaded.');
       return;
     }
 
-    if (manifest.environment) {
-      try {
-        const hdr = await this.assetService.loadHdr(manifest.environment);
-        this.applyEnvironment(hdr as THREE.Texture);
-      } catch {
-        this.applyEnvironment(null);
-      }
-    } else {
-      this.applyEnvironment(null);
-    }
-
-    const group = new THREE.Group();
-    this.activeGroup = group;
-    this.scene?.add(group);
-
-    await this.loadLod(manifest.lods, group);
-    this.status.set(`Loaded ${manifest.displayName}.`);
-  }
-
-  private async loadLod(lods: string[], group: THREE.Group): Promise<void> {
-    const THREE = this.activeThree;
-    if (!this.scene) {
-      return;
-    }
-
-    const lod = new THREE.LOD();
-    group.add(lod);
-
-    await this.loadLodLevel(lods[0], lod, 0);
-
-    const higher = lods.slice(1);
-    higher.forEach((url, index) => {
-      const distance = (index + 1) * 12 + this.sceneSettings().lodBias * 3;
-      void this.loadLodLevel(url, lod, distance);
-    });
-
-    this.refreshInspector();
-  }
-
-  private async loadLodLevel(url: string, lod: THREE.LOD, distance: number): Promise<void> {
-    const THREE = this.activeThree;
-    try {
-      const gltf = (await this.assetService.loadGltf(url)) as { scene: THREE.Group };
-      const scene = gltf.scene;
-      scene.traverse((object: THREE.Object3D) => {
-        if (object instanceof THREE.Mesh) {
-          object.castShadow = true;
-          object.receiveShadow = true;
-          if (object.material instanceof THREE.MeshStandardMaterial) {
-            object.material.envMapIntensity = this.sceneSettings().environmentIntensity;
-          }
-        }
-      });
-      lod.addLevel(scene, distance);
-    } catch {
-      this.status.set(`Failed to load LOD: ${url}`);
-    }
-  }
-
-  private buildProceduralScene(): void {
-    const THREE = this.activeThree;
-    if (!this.scene) {
-      return;
-    }
-
-    const group = new THREE.Group();
-    this.activeGroup = group;
-    this.scene.add(group);
-
-    const materialA = new THREE.MeshStandardMaterial({
-      color: 0x1f8f82,
-      metalness: 0.4,
-      roughness: 0.35,
-    });
-    const materialB = new THREE.MeshStandardMaterial({
-      color: 0xf7b545,
-      metalness: 0.2,
-      roughness: 0.5,
-    });
-    const materialC = new THREE.MeshStandardMaterial({
-      color: 0xff6b4a,
-      metalness: 0.7,
-      roughness: 0.2,
-    });
-
-    const geoA = new THREE.TorusKnotGeometry(1.2, 0.4, 180, 32);
-    const geoB = new THREE.IcosahedronGeometry(1.2, 2);
-    const geoC = new THREE.BoxGeometry(1.6, 1.6, 1.6);
-
-    const meshA = new THREE.Mesh(geoA, materialA);
-    meshA.position.set(-2.6, 1.6, 0);
-    meshA.castShadow = true;
-
-    const meshB = new THREE.Mesh(geoB, materialB);
-    meshB.position.set(0.2, 1.2, -1.8);
-    meshB.castShadow = true;
-
-    const meshC = new THREE.Mesh(geoC, materialC);
-    meshC.position.set(2.6, 1.1, 1.6);
-    meshC.castShadow = true;
-
-    group.add(meshA, meshB, meshC);
-
-    this.refreshInspector();
-  }
-
-  private clearActiveGroup(): void {
-    const THREE = this.activeThree;
-    if (!this.scene || !this.activeGroup) {
-      return;
-    }
-
-    this.scene.remove(this.activeGroup);
-    this.activeGroup.traverse((object: THREE.Object3D) => {
-      if (object instanceof THREE.Mesh) {
-        object.geometry.dispose();
-        if (Array.isArray(object.material)) {
-          object.material.forEach((material: THREE.Material) => material.dispose());
-        } else {
-          object.material.dispose();
-        }
-      }
-    });
-    this.activeGroup = null;
+    this.status.set(`Loaded ${collection.displayName}.`);
   }
 
   private refreshInspector(): void {
@@ -933,7 +759,11 @@ export class TestbedComponent implements AfterViewInit {
 
   private dispose(): void {
     this.disposeRenderer();
-    this.clearActiveGroup();
+    this.activeGroup = this.sceneContentService.clearActiveGroup(
+      this.scene,
+      this.activeGroup,
+      this.activeThree,
+    );
     this.controls?.dispose();
     this.controls = null;
     this.composer = null;
