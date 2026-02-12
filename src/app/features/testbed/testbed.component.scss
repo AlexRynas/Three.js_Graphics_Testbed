@@ -1,18 +1,23 @@
 :host {
   display: block;
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .testbed {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   padding: 1.5rem 2rem 2.5rem;
   gap: 1.5rem;
   color: var(--text-high);
 }
 
 .layout {
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 340px;
   gap: 1.5rem;
@@ -21,6 +26,7 @@
 
 .viewport-stage {
   position: relative;
+  min-height: 0;
 }
 
 @media (max-width: 1100px) {

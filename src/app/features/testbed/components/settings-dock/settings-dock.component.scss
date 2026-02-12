@@ -1,9 +1,10 @@
 :host {
   position: absolute;
   top: 1.5rem;
+  bottom: 1.5rem;
   right: 1.5rem;
   width: min(340px, calc(100% - 3rem));
-  max-height: calc(100% - 3rem);
+  min-height: 0;
   z-index: 30;
 }
 
@@ -15,8 +16,10 @@
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
-  max-height: 100%;
-  overflow: auto;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   padding-right: 1.1rem;
 }
 
@@ -85,13 +88,13 @@
 @media (max-width: 900px) {
   :host {
     position: static;
+    bottom: auto;
     width: 100%;
-    max-height: none;
     margin: 1rem;
   }
 
   .settings-dock {
-    max-height: none;
+    height: auto;
     padding-right: 0;
   }
 }
