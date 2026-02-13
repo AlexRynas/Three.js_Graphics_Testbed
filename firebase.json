@@ -1,0 +1,16 @@
+{
+  "hosting": {
+    "public": "dist/three_js_graphics_testbed_frontend",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
