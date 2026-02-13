@@ -28,7 +28,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: web-dist
-          path: .
+          path: dist
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
