@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "dist/three_js_graphics_testbed_frontend",
+    "public": "dist/three_js_graphics_testbed_frontend/browser",
     "ignore": [
       "firebase.json",
       "**/.*",
