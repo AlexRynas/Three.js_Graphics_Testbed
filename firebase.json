@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "threejs-graphics-demo",
     "public": "dist/three_js_graphics_testbed_frontend/browser",
     "ignore": [
       "firebase.json",
