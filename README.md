@@ -2,6 +2,10 @@
 
 An Angular 21 + Three.js graphics sandbox for testing renderer modes, post-processing, scene loading, and benchmark capture. The app is route-level lazy loaded and organized around a thin shell component plus focused services.
 
+## Live demo
+
+- Production demo: [https://threejs-graphics-demo.web.app/](https://threejs-graphics-demo.web.app/)
+
 ## What this project does
 
 - Runs a configurable graphics testbed in WebGL or WebGPU.
