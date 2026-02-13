@@ -4,7 +4,7 @@ An Angular 21 + Three.js graphics sandbox for testing renderer modes, post-proce
 
 ## Live demo
 
-- Production demo: [https://threejs-graphics-demo.web.app/](https://threejs-graphics-demo.web.app/)
+- Production demo: [https://threejs-graphics-testbed.web.app/](https://threejs-graphics-testbed.web.app/)
 
 ## What this project does
 

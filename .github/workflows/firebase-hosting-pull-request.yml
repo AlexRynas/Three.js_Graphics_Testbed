@@ -8,14 +8,33 @@ permissions:
   contents: read
   pull-requests: write
 jobs:
-  build_and_preview:
+  build:
     if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: npm ci && npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+
+  preview:
+    if: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [demo, testbed]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: .
       - uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_THREEJS_GRAPHICS_TESTBED }}
           projectId: threejs-graphics-testbed
+          target: ${{ matrix.target }}

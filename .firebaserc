@@ -1,5 +1,17 @@
 {
   "projects": {
     "default": "threejs-graphics-testbed"
+  },
+  "targets": {
+    "threejs-graphics-testbed": {
+      "hosting": {
+        "demo": [
+          "threejs-graphics-demo"
+        ],
+        "testbed": [
+          "threejs-graphics-testbed"
+        ]
+      }
+    }
   }
 }
