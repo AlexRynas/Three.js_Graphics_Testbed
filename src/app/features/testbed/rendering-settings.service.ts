@@ -34,12 +34,25 @@ export class RenderingSettingsService {
     }
 
     const toneMapping = sceneSettings.toneMapping;
-    if (toneMapping === 'aces') {
-      renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    } else if (toneMapping === 'neutral') {
-      renderer.toneMapping = THREE.NeutralToneMapping;
-    } else {
-      renderer.toneMapping = THREE.NoToneMapping;
+    switch (toneMapping) {
+      case 'none':
+        renderer.toneMapping = THREE.NoToneMapping;
+        break;
+      case 'linear':
+        renderer.toneMapping = THREE.LinearToneMapping;
+        break;
+      case 'reinhard':
+        renderer.toneMapping = THREE.ReinhardToneMapping;
+        break;
+      case 'cineon':
+        renderer.toneMapping = THREE.CineonToneMapping;
+        break;
+      case 'aces':
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        break;
+      case 'neutral':
+        renderer.toneMapping = THREE.CustomToneMapping;
+        break;
     }
 
     renderer.toneMappingExposure = sceneSettings.exposure;
@@ -59,9 +72,14 @@ export class RenderingSettingsService {
       let outputNode: Node = scenePass.getTextureNode('output');
 
       if (settings.ssaoEnabled && settings.screenSpaceShadows && support.controls.ssaoEnabled) {
-        const aoNode = ao(scenePass.getTextureNode('depth'), scenePass.getTextureNode('normal'), passes.webgpu.camera);
+        const aoNode = ao(
+          scenePass.getTextureNode('depth'),
+          scenePass.getTextureNode('normal'),
+          passes.webgpu.camera,
+        );
         aoNode.radius.value = Math.max(0.05, settings.ssaoRadius * 0.025);
-        aoNode.samples.value = settings.ssaoQuality === 'high' ? 24 : settings.ssaoQuality === 'low' ? 8 : 16;
+        aoNode.samples.value =
+          settings.ssaoQuality === 'high' ? 24 : settings.ssaoQuality === 'low' ? 8 : 16;
         aoNode.setSize(width, height);
         outputNode = mul(outputNode, oneMinus(aoNode.getTextureNode()));
       }
@@ -141,7 +159,8 @@ export class RenderingSettingsService {
 
     if (passes.ssaoPass) {
       passes.ssaoPass.enabled = !isWebGpu && settings.ssaoEnabled && settings.screenSpaceShadows;
-      const qualityBoost = settings.ssaoQuality === 'high' ? 1.4 : settings.ssaoQuality === 'low' ? 0.8 : 1;
+      const qualityBoost =
+        settings.ssaoQuality === 'high' ? 1.4 : settings.ssaoQuality === 'low' ? 0.8 : 1;
       passes.ssaoPass.kernelRadius = settings.ssaoRadius * qualityBoost;
     }
 

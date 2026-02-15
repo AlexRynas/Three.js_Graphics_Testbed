@@ -51,7 +51,7 @@ export class SettingsDockComponent {
   protected readonly antialiasingModes: AntiAliasingMode[] = ['none', 'msaa', 'fxaa', 'smaa', 'taa'];
   protected readonly qualityLevels: QualityLevel[] = ['low', 'medium', 'high'];
   protected readonly textureModes: TextureFiltering[] = ['linear', 'trilinear', 'anisotropic'];
-  protected readonly toneMappingModes: Array<SceneSettings['toneMapping']> = ['none', 'aces', 'neutral'];
+  protected readonly toneMappingModes: Array<SceneSettings['toneMapping']> = ['none', 'linear', 'reinhard', 'cineon', 'aces', 'neutral'];
   protected readonly showSmaaQuality = computed(() => this.settings().antialiasing === 'smaa');
   protected readonly showTaaSamples = computed(() => this.settings().antialiasing === 'taa');
   protected readonly showSsaoChildren = computed(() => this.settings().ssaoEnabled);

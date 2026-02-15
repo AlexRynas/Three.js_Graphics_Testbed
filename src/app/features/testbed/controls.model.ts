@@ -16,6 +16,7 @@ export type RenderingControlKey =
   | 'vignette'
   | 'lensFlares'
   | 'filmGrain';
+export type ToneMapping = 'none' | 'linear' | 'reinhard' | 'cineon' | 'aces' | 'neutral';
 
 export interface RenderingSupport {
   antialiasingModes: Record<AntiAliasingMode, boolean>;
@@ -51,7 +52,7 @@ export interface RenderingSettings {
 export interface SceneSettings {
   environmentIntensity: number;
   exposure: number;
-  toneMapping: 'none' | 'aces' | 'neutral';
+  toneMapping: ToneMapping;
   autoRotate: boolean;
   lodBias: number;
   bvhEnabled: boolean;
@@ -126,14 +127,14 @@ export const defaultRenderingSettings: RenderingSettings = {
   screenSpaceShadows: true,
   vignette: true,
   lensFlares: true,
-  filmGrain: false
+  filmGrain: false,
 };
 
 export const defaultSceneSettings: SceneSettings = {
   environmentIntensity: 1,
   exposure: 1,
-  toneMapping: 'aces',
+  toneMapping: 'none',
   autoRotate: true,
   lodBias: 0,
-  bvhEnabled: false
+  bvhEnabled: false,
 };
