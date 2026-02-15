@@ -41,23 +41,6 @@
       </select>
     </label>
 
-    <label appLabeledField label="MSAA samples">
-      <div class="range-field">
-        <input
-          #msaaSamples
-          class="field-input"
-          type="range"
-          min="0"
-          max="8"
-          step="1"
-          [value]="settings().msaaSamples"
-          [disabled]="!isControlSupported('msaaSamples')"
-          (input)="updateRenderingNumber('msaaSamples', msaaSamples.valueAsNumber)"
-        />
-        <span class="range-value">{{ settings().msaaSamples }}</span>
-      </div>
-    </label>
-
     <label appLabeledField label="SMAA quality">
       <select
         #smaaQuality

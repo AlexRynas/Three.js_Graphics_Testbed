@@ -276,7 +276,6 @@ export class RenderingSettingsService {
         taa: true,
       },
       controls: {
-        msaaSamples: !isWebGpu,
         smaaQuality: true,
         taaSamples: true,
         ssaoEnabled: true,

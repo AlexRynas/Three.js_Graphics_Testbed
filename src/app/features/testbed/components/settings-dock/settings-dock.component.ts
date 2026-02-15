@@ -103,7 +103,6 @@ export class SettingsDockComponent {
 
   updateRenderingNumber(
     key:
-      | 'msaaSamples'
       | 'taaSamples'
       | 'ssaoRadius'
       | 'anisotropy'

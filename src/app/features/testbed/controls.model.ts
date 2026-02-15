@@ -3,7 +3,6 @@ export type AntiAliasingMode = 'none' | 'msaa' | 'fxaa' | 'smaa' | 'taa';
 export type TextureFiltering = 'linear' | 'trilinear' | 'anisotropic';
 export type QualityLevel = 'low' | 'medium' | 'high';
 export type RenderingControlKey =
-  | 'msaaSamples'
   | 'smaaQuality'
   | 'taaSamples'
   | 'ssaoEnabled'
@@ -27,7 +26,6 @@ export interface RenderingSupport {
 export interface RenderingSettings {
   rendererMode: RendererMode;
   antialiasing: AntiAliasingMode;
-  msaaSamples: number;
   smaaQuality: QualityLevel;
   taaSamples: number;
   ssaoEnabled: boolean;
@@ -110,7 +108,6 @@ export interface InspectorSnapshot {
 export const defaultRenderingSettings: RenderingSettings = {
   rendererMode: 'webgl',
   antialiasing: 'msaa',
-  msaaSamples: 4,
   smaaQuality: 'medium',
   taaSamples: 4,
   ssaoEnabled: true,
