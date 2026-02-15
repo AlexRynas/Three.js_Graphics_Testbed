@@ -478,6 +478,11 @@ export class TestbedFacade {
       this.currentMode,
       hdrTexture,
     );
+    this.sceneOptimizationService.applyEnvironmentIntensity(
+      this.scene,
+      this.activeThree,
+      this.sceneSettings().environmentIntensity,
+    );
   }
 
   private applyLensFlares(settings: RenderingSettings): void {

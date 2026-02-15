@@ -10,9 +10,9 @@ import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
 import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
 import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
-import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 import { CapabilitySummary, RenderingSettings, RendererMode } from './controls.model';
@@ -42,7 +42,7 @@ export type ComposerBundle = {
   dofPass: BokehPass | null;
   filmPass: FilmPass | null;
   vignettePass: ShaderPass | null;
-  finalPass: ShaderPass | null;
+  finalPass: OutputPass | null;
   webgpu: WebGpuPostBundle | null;
 };
 
@@ -251,7 +251,7 @@ export class TestbedRuntimeService {
     const vignettePass = new ShaderPass(VignetteShader);
     composer.addPass(vignettePass);
 
-    const finalPass = new ShaderPass(CopyShader);
+    const finalPass = new OutputPass();
     composer.addPass(finalPass);
 
     return {

@@ -14,10 +14,27 @@ export class SceneOptimizationService {
       return;
     }
 
+    const sceneWithEnvironmentIntensity = scene as SceneInstance & {
+      environmentIntensity?: number;
+    };
+    if (sceneWithEnvironmentIntensity.environment) {
+      sceneWithEnvironmentIntensity.environmentIntensity = intensity;
+    }
+
     scene.traverse((object) => {
-      if (object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial) {
-        object.material.envMapIntensity = intensity;
+      if (!(object instanceof THREE.Mesh)) {
+        return;
       }
+
+      const materials = Array.isArray(object.material) ? object.material : [object.material];
+      materials.forEach((material) => {
+        if (
+          material instanceof THREE.MeshStandardMaterial ||
+          material instanceof THREE.MeshPhysicalMaterial
+        ) {
+          material.envMapIntensity = intensity;
+        }
+      });
     });
   }
 
