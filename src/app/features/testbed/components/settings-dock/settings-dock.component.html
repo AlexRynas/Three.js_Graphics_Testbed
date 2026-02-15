@@ -13,11 +13,12 @@
       <select
         #rendererMode
         class="field-input"
-        [value]="settings().rendererMode"
         (change)="updateRendererMode(rendererMode.value)"
       >
         @for (mode of rendererModes; track mode) {
-          <option [value]="mode">{{ mode.toUpperCase() }}</option>
+          <option [value]="mode" [selected]="settings().rendererMode === mode">
+            {{ mode.toUpperCase() }}
+          </option>
         }
       </select>
     </label>
@@ -26,11 +27,14 @@
       <select
         #antialiasing
         class="field-input"
-        [value]="settings().antialiasing"
         (change)="updateAntialiasing(antialiasing.value)"
       >
         @for (mode of antialiasingModes; track mode) {
-          <option [value]="mode" [disabled]="!isAntialiasingSupported(mode)">
+          <option
+            [value]="mode"
+            [selected]="settings().antialiasing === mode"
+            [disabled]="!isAntialiasingSupported(mode)"
+          >
             {{ mode.toUpperCase() }}
           </option>
         }
@@ -58,12 +62,13 @@
       <select
         #smaaQuality
         class="field-input"
-        [value]="settings().smaaQuality"
         [disabled]="!isControlSupported('smaaQuality')"
         (change)="updateSmaaQuality(smaaQuality.value)"
       >
         @for (quality of qualityLevels; track quality) {
-          <option [value]="quality">{{ quality.toUpperCase() }}</option>
+          <option [value]="quality" [selected]="settings().smaaQuality === quality">
+            {{ quality.toUpperCase() }}
+          </option>
         }
       </select>
     </label>
@@ -121,12 +126,13 @@
       <select
         #ssaoQuality
         class="field-input"
-        [value]="settings().ssaoQuality"
         [disabled]="!isControlSupported('ssaoQuality')"
         (change)="updateSsaoQuality(ssaoQuality.value)"
       >
         @for (quality of qualityLevels; track quality) {
-          <option [value]="quality">{{ quality.toUpperCase() }}</option>
+          <option [value]="quality" [selected]="settings().ssaoQuality === quality">
+            {{ quality.toUpperCase() }}
+          </option>
         }
       </select>
     </label>
@@ -262,11 +268,12 @@
       <select
         #filtering
         class="field-input"
-        [value]="settings().textureFiltering"
         (change)="updateTextureFiltering(filtering.value)"
       >
         @for (mode of textureModes; track mode) {
-          <option [value]="mode">{{ mode }}</option>
+          <option [value]="mode" [selected]="settings().textureFiltering === mode">
+            {{ mode }}
+          </option>
         }
       </select>
     </label>
@@ -311,11 +318,12 @@
       <select
         #toneMapping
         class="field-input"
-        [value]="sceneSettings().toneMapping"
         (change)="updateToneMapping(toneMapping.value)"
       >
         @for (mode of toneMappingModes; track mode) {
-          <option [value]="mode">{{ mode.toUpperCase() }}</option>
+          <option [value]="mode" [selected]="sceneSettings().toneMapping === mode">
+            {{ mode.toUpperCase() }}
+          </option>
         }
       </select>
     </label>
