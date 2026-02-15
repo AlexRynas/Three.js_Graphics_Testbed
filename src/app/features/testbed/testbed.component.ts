@@ -14,7 +14,6 @@ import {
 } from './controls.model';
 import { CapabilitiesPanelComponent } from './components/panels/capabilities-panel/capabilities-panel.component';
 import { CollectionsPanelComponent } from './components/panels/collections-panel/collections-panel.component';
-import { FeatureTogglesPanelComponent } from './components/panels/feature-toggles-panel/feature-toggles-panel.component';
 import { InspectorPanelComponent } from './components/panels/inspector-panel/inspector-panel.component';
 import { PresetsPanelComponent } from './components/panels/presets-panel/presets-panel.component';
 import { HudComponent } from './components/hud/hud.component';
@@ -34,7 +33,6 @@ import { TestbedFacade } from './testbed.facade';
     CommonModule,
     CapabilitiesPanelComponent,
     CollectionsPanelComponent,
-    FeatureTogglesPanelComponent,
     InspectorPanelComponent,
     PresetsPanelComponent,
     HudComponent,

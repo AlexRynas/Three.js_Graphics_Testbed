@@ -78,13 +78,6 @@ export interface Preset {
   scene: SceneSettings;
 }
 
-export interface FeatureSupport {
-  key: string;
-  label: string;
-  supported: boolean;
-  detail?: string;
-}
-
 export interface CapabilitySummary {
   webgpu: boolean;
   webgl2: boolean;
