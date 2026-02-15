@@ -93,8 +93,6 @@ export class TestbedRuntimeService {
       await renderer.init();
       renderer.setPixelRatio(window.devicePixelRatio || 1);
       renderer.outputColorSpace = threeModule.SRGBColorSpace;
-      renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = threeModule.PCFSoftShadowMap;
 
       return {
         renderer,
@@ -114,8 +112,6 @@ export class TestbedRuntimeService {
     });
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.outputColorSpace = threeModule.SRGBColorSpace;
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = threeModule.PCFSoftShadowMap;
 
     return {
       renderer,

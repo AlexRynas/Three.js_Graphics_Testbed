@@ -15,14 +15,22 @@ import {
   RenderingSettings,
   RenderingSupport,
   SceneSettings,
+  ShadowType,
 } from './controls.model';
 import { RendererInstance } from './frame-stats-tracker';
 import { ComposerBundle, ThreeModule, SceneInstance } from './testbed-runtime.service';
 
 type PostProcessingPasses = ComposerBundle;
 
+type ShadowApplyResult = {
+  fallbackMessage: string | null;
+  appliedType: ShadowType;
+};
+
 @Injectable({ providedIn: 'root' })
 export class RenderingSettingsService {
+  private lastShadowSignature: string | null = null;
+
   applyToneMapping(
     renderer: RendererInstance | null,
     threeModule: ThreeModule,
@@ -180,12 +188,61 @@ export class RenderingSettingsService {
     }
   }
 
-  applyShadowSettings(renderer: RendererInstance | null, settings: RenderingSettings): void {
+  applyShadowSettings(
+    renderer: RendererInstance | null,
+    settings: RenderingSettings,
+    threeModule: ThreeModule,
+    rendererMode: RendererMode,
+    scene: SceneInstance | null,
+  ): ShadowApplyResult | null {
     if (!renderer || !('shadowMap' in renderer)) {
-      return;
+      return null;
     }
 
     renderer.shadowMap.enabled = settings.contactShadows;
+
+    const { type, resolvedType } = this.resolveShadowType(settings.shadowType, threeModule, rendererMode);
+    renderer.shadowMap.type = type as typeof renderer.shadowMap.type;
+
+    const shadowSignature = `${settings.contactShadows}:${resolvedType}:${rendererMode}`;
+    if (shadowSignature !== this.lastShadowSignature) {
+      this.lastShadowSignature = shadowSignature;
+      this.refreshShadowMaterials(scene, threeModule);
+    }
+
+    if (resolvedType === settings.shadowType) {
+      return {
+        fallbackMessage: null,
+        appliedType: resolvedType,
+      };
+    }
+
+    return {
+      fallbackMessage: `Shadow type ${settings.shadowType.toUpperCase()} is unavailable in ${rendererMode.toUpperCase()}; using ${this.shadowTypeLabel(resolvedType)}.`,
+      appliedType: resolvedType,
+    };
+  }
+
+  private refreshShadowMaterials(scene: SceneInstance | null, threeModule: ThreeModule): void {
+    if (!scene) {
+      return;
+    }
+
+    const THREE = threeModule;
+    scene.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) {
+        return;
+      }
+
+      if (Array.isArray(object.material)) {
+        object.material.forEach((material) => {
+          material.needsUpdate = true;
+        });
+        return;
+      }
+
+      object.material.needsUpdate = true;
+    });
   }
 
   applyTextureFiltering(
@@ -298,5 +355,38 @@ export class RenderingSettingsService {
         filmGrain: true,
       },
     };
+  }
+
+  private resolveShadowType(
+    requested: ShadowType,
+    threeModule: ThreeModule,
+    rendererMode: RendererMode,
+  ): { type: number; resolvedType: ShadowType } {
+    const fallbackType: ShadowType = 'pcf';
+    if (requested === 'vsm' && rendererMode === 'webgpu') {
+      return {
+        type: threeModule.PCFShadowMap,
+        resolvedType: fallbackType,
+      };
+    }
+
+    switch (requested) {
+      case 'basic':
+        return { type: threeModule.BasicShadowMap, resolvedType: 'basic' };
+      case 'pcf':
+        return { type: threeModule.PCFShadowMap, resolvedType: 'pcf' };
+      case 'pcfSoft':
+        return { type: threeModule.PCFSoftShadowMap, resolvedType: 'pcfSoft' };
+      case 'vsm':
+        return { type: threeModule.VSMShadowMap, resolvedType: 'vsm' };
+    }
+  }
+
+  private shadowTypeLabel(mode: ShadowType): string {
+    if (mode === 'pcfSoft') {
+      return 'PCF Soft';
+    }
+
+    return mode.toUpperCase();
   }
 }

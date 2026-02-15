@@ -9,6 +9,7 @@ import {
   RenderingSettings,
   RenderingSupport,
   SceneSettings,
+  ShadowType,
   TextureFiltering,
 } from '../../controls.model';
 import { LabeledFieldComponent } from '../../../../shared/ui/labeled-field/labeled-field.component';
@@ -51,6 +52,7 @@ export class SettingsDockComponent {
   protected readonly antialiasingModes: AntiAliasingMode[] = ['none', 'msaa', 'fxaa', 'smaa', 'taa'];
   protected readonly qualityLevels: QualityLevel[] = ['low', 'medium', 'high'];
   protected readonly textureModes: TextureFiltering[] = ['linear', 'trilinear', 'anisotropic'];
+  protected readonly shadowTypes: ShadowType[] = ['basic', 'pcf', 'pcfSoft', 'vsm'];
   protected readonly toneMappingModes: Array<SceneSettings['toneMapping']> = ['none', 'linear', 'reinhard', 'cineon', 'aces', 'neutral'];
   protected readonly showSmaaQuality = computed(() => this.settings().antialiasing === 'smaa');
   protected readonly showTaaSamples = computed(() => this.settings().antialiasing === 'taa');
@@ -96,6 +98,14 @@ export class SettingsDockComponent {
     }
 
     this.emitRendering('textureFiltering', value as TextureFiltering);
+  }
+
+  updateShadowType(value: string): void {
+    if (!this.shadowTypes.includes(value as ShadowType)) {
+      return;
+    }
+
+    this.emitRendering('shadowType', value as ShadowType);
   }
 
   updateToneMapping(value: string): void {

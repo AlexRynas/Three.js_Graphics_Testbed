@@ -2,6 +2,7 @@ export type RendererMode = 'webgl' | 'webgpu';
 export type AntiAliasingMode = 'none' | 'msaa' | 'fxaa' | 'smaa' | 'taa';
 export type TextureFiltering = 'linear' | 'trilinear' | 'anisotropic';
 export type QualityLevel = 'low' | 'medium' | 'high';
+export type ShadowType = 'basic' | 'pcf' | 'pcfSoft' | 'vsm';
 export type RenderingControlKey =
   | 'smaaQuality'
   | 'taaSamples'
@@ -43,6 +44,7 @@ export interface RenderingSettings {
   dofMaxBlur: number;
   volumetricLighting: boolean;
   contactShadows: boolean;
+  shadowType: ShadowType;
   screenSpaceShadows: boolean;
   vignette: boolean;
   lensFlares: boolean;
@@ -117,6 +119,7 @@ export const defaultRenderingSettings: RenderingSettings = {
   dofMaxBlur: 0.01,
   volumetricLighting: false,
   contactShadows: true,
+  shadowType: 'pcf',
   screenSpaceShadows: true,
   vignette: true,
   lensFlares: true,

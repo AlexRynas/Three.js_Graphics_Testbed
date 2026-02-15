@@ -76,6 +76,30 @@
         </div>
       </label>
     }
+
+    <label class="toggle-row">
+      <span>Contact shadows</span>
+      <input
+        #contactShadows
+        type="checkbox"
+        [checked]="settings().contactShadows"
+        (change)="updateRenderingBoolean('contactShadows', contactShadows.checked)"
+      />
+    </label>
+
+    <label appLabeledField label="Shadow type">
+      <select #shadowType class="field-input" (change)="updateShadowType(shadowType.value)">
+        @for (mode of shadowTypes; track mode) {
+          <option [value]="mode" [selected]="settings().shadowType === mode">
+            @if (mode === 'pcfSoft') {
+              PCF Soft
+            } @else {
+              {{ mode.toUpperCase() }}
+            }
+          </option>
+        }
+      </select>
+    </label>
   </section>
 
   <section class="group" aria-label="Post effects settings">
@@ -358,16 +382,6 @@
         [checked]="settings().lensFlares"
         [disabled]="!isControlSupported('lensFlares')"
         (change)="updateRenderingBoolean('lensFlares', lensFlares.checked)"
-      />
-    </label>
-
-    <label class="toggle-row">
-      <span>Contact shadows</span>
-      <input
-        #contactShadows
-        type="checkbox"
-        [checked]="settings().contactShadows"
-        (change)="updateRenderingBoolean('contactShadows', contactShadows.checked)"
       />
     </label>
 

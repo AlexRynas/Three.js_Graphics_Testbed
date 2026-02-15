@@ -388,7 +388,13 @@ export class TestbedFacade {
       this.currentMode,
       this.getViewportSize(),
     );
-    this.renderingSettingsService.applyShadowSettings(this.renderer, settings);
+    const shadowResult = this.renderingSettingsService.applyShadowSettings(
+      this.renderer,
+      settings,
+      this.activeThree,
+      this.currentMode,
+      this.scene,
+    );
     this.applyLensFlares(settings);
     this.renderingSettingsService.applyTextureFiltering(
       this.renderer,
@@ -407,9 +413,13 @@ export class TestbedFacade {
       this.currentMode,
       this.rendererLabel(),
     );
-    if (unsupported) {
+    if (shadowResult?.fallbackMessage) {
+      this.status.set(shadowResult.fallbackMessage);
+    } else if (unsupported) {
       this.status.set(unsupported);
     } else if (this.status().startsWith('Unsupported in')) {
+      this.status.set('Ready');
+    } else if (this.status().startsWith('Shadow type')) {
       this.status.set('Ready');
     }
   }

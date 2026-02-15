@@ -81,6 +81,7 @@ export class AssetService {
       rendering: {
         ...defaultRenderingSettings,
         antialiasing: 'fxaa',
+        shadowType: 'basic',
         ssaoEnabled: false,
         textureFiltering: 'linear',
         depthOfField: false,
@@ -98,6 +99,7 @@ export class AssetService {
       rendering: {
         ...defaultRenderingSettings,
         antialiasing: 'smaa',
+        shadowType: 'pcf',
         ssaoEnabled: true,
         ssaoQuality: 'medium',
         textureFiltering: 'trilinear',
@@ -113,6 +115,7 @@ export class AssetService {
       rendering: {
         ...defaultRenderingSettings,
         antialiasing: 'taa',
+        shadowType: 'pcfSoft',
         ssaoEnabled: true,
         ssaoQuality: 'high',
         textureFiltering: 'anisotropic',
