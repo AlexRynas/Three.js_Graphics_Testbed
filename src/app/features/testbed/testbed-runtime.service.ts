@@ -93,6 +93,8 @@ export class TestbedRuntimeService {
       await renderer.init();
       renderer.setPixelRatio(window.devicePixelRatio || 1);
       renderer.outputColorSpace = threeModule.SRGBColorSpace;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = threeModule.PCFSoftShadowMap;
 
       return {
         renderer,
@@ -207,7 +209,10 @@ export class TestbedRuntimeService {
         }),
       );
 
-      const postProcessing = new THREE_WEBGPU.PostProcessing(renderer, scenePass.getTextureNode('output'));
+      const postProcessing = new THREE_WEBGPU.PostProcessing(
+        renderer,
+        scenePass.getTextureNode('output'),
+      );
       return {
         ...this.createEmptyComposerBundle(),
         webgpu: {
