@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 
 import {
   AntiAliasingMode,
@@ -52,6 +52,11 @@ export class SettingsDockComponent {
   protected readonly qualityLevels: QualityLevel[] = ['low', 'medium', 'high'];
   protected readonly textureModes: TextureFiltering[] = ['linear', 'trilinear', 'anisotropic'];
   protected readonly toneMappingModes: Array<SceneSettings['toneMapping']> = ['none', 'aces', 'neutral'];
+  protected readonly showSmaaQuality = computed(() => this.settings().antialiasing === 'smaa');
+  protected readonly showTaaSamples = computed(() => this.settings().antialiasing === 'taa');
+  protected readonly showSsaoChildren = computed(() => this.settings().ssaoEnabled);
+  protected readonly showDofChildren = computed(() => this.settings().depthOfField);
+  protected readonly showAnisotropy = computed(() => this.settings().textureFiltering === 'anisotropic');
 
   updateRendererMode(value: string): void {
     if (!this.rendererModes.includes(value as RendererMode)) {

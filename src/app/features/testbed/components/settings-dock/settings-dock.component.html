@@ -41,37 +41,41 @@
       </select>
     </label>
 
-    <label appLabeledField label="SMAA quality">
-      <select
-        #smaaQuality
-        class="field-input"
-        [disabled]="!isControlSupported('smaaQuality')"
-        (change)="updateSmaaQuality(smaaQuality.value)"
-      >
-        @for (quality of qualityLevels; track quality) {
-          <option [value]="quality" [selected]="settings().smaaQuality === quality">
-            {{ quality.toUpperCase() }}
-          </option>
-        }
-      </select>
-    </label>
-
-    <label appLabeledField label="TAA samples">
-      <div class="range-field">
-        <input
-          #taaSamples
+    @if (showSmaaQuality()) {
+      <label appLabeledField label="SMAA quality">
+        <select
+          #smaaQuality
           class="field-input"
-          type="range"
-          min="1"
-          max="8"
-          step="1"
-          [value]="settings().taaSamples"
-          [disabled]="!isControlSupported('taaSamples')"
-          (input)="updateRenderingNumber('taaSamples', taaSamples.valueAsNumber)"
-        />
-        <span class="range-value">{{ settings().taaSamples }}</span>
-      </div>
-    </label>
+          [disabled]="!isControlSupported('smaaQuality')"
+          (change)="updateSmaaQuality(smaaQuality.value)"
+        >
+          @for (quality of qualityLevels; track quality) {
+            <option [value]="quality" [selected]="settings().smaaQuality === quality">
+              {{ quality.toUpperCase() }}
+            </option>
+          }
+        </select>
+      </label>
+    }
+
+    @if (showTaaSamples()) {
+      <label appLabeledField label="TAA samples">
+        <div class="range-field">
+          <input
+            #taaSamples
+            class="field-input"
+            type="range"
+            min="1"
+            max="8"
+            step="1"
+            [value]="settings().taaSamples"
+            [disabled]="!isControlSupported('taaSamples')"
+            (input)="updateRenderingNumber('taaSamples', taaSamples.valueAsNumber)"
+          />
+          <span class="range-value">{{ settings().taaSamples }}</span>
+        </div>
+      </label>
+    }
   </section>
 
   <section class="group" aria-label="Post effects settings">
@@ -88,37 +92,39 @@
       />
     </label>
 
-    <label appLabeledField label="SSAO radius">
-      <div class="range-field">
-        <input
-          #ssaoRadius
-          class="field-input"
-          type="range"
-          min="1"
-          max="32"
-          step="1"
-          [value]="settings().ssaoRadius"
-          [disabled]="!isControlSupported('ssaoRadius')"
-          (input)="updateRenderingNumber('ssaoRadius', ssaoRadius.valueAsNumber)"
-        />
-        <span class="range-value">{{ settings().ssaoRadius }}</span>
-      </div>
-    </label>
+    @if (showSsaoChildren()) {
+      <label appLabeledField label="SSAO radius">
+        <div class="range-field">
+          <input
+            #ssaoRadius
+            class="field-input"
+            type="range"
+            min="1"
+            max="32"
+            step="1"
+            [value]="settings().ssaoRadius"
+            [disabled]="!isControlSupported('ssaoRadius')"
+            (input)="updateRenderingNumber('ssaoRadius', ssaoRadius.valueAsNumber)"
+          />
+          <span class="range-value">{{ settings().ssaoRadius }}</span>
+        </div>
+      </label>
 
-    <label appLabeledField label="SSAO quality">
-      <select
-        #ssaoQuality
-        class="field-input"
-        [disabled]="!isControlSupported('ssaoQuality')"
-        (change)="updateSsaoQuality(ssaoQuality.value)"
-      >
-        @for (quality of qualityLevels; track quality) {
-          <option [value]="quality" [selected]="settings().ssaoQuality === quality">
-            {{ quality.toUpperCase() }}
-          </option>
-        }
-      </select>
-    </label>
+      <label appLabeledField label="SSAO quality">
+        <select
+          #ssaoQuality
+          class="field-input"
+          [disabled]="!isControlSupported('ssaoQuality')"
+          (change)="updateSsaoQuality(ssaoQuality.value)"
+        >
+          @for (quality of qualityLevels; track quality) {
+            <option [value]="quality" [selected]="settings().ssaoQuality === quality">
+              {{ quality.toUpperCase() }}
+            </option>
+          }
+        </select>
+      </label>
+    }
 
     <label class="toggle-row" [class.disabled-row]="!isControlSupported('ssrEnabled')">
       <span>SSR</span>
@@ -143,56 +149,58 @@
       />
     </label>
 
-    <label appLabeledField label="DOF focus">
-      <div class="range-field">
-        <input
-          #dofFocus
-          class="field-input"
-          type="range"
-          min="1"
-          max="20"
-          step="0.1"
-          [value]="settings().dofFocus"
-          [disabled]="!isControlSupported('dofFocus')"
-          (input)="updateRenderingNumber('dofFocus', dofFocus.valueAsNumber)"
-        />
-        <span class="range-value">{{ settings().dofFocus.toFixed(1) }}</span>
-      </div>
-    </label>
+    @if (showDofChildren()) {
+      <label appLabeledField label="DOF focus">
+        <div class="range-field">
+          <input
+            #dofFocus
+            class="field-input"
+            type="range"
+            min="1"
+            max="20"
+            step="0.1"
+            [value]="settings().dofFocus"
+            [disabled]="!isControlSupported('dofFocus')"
+            (input)="updateRenderingNumber('dofFocus', dofFocus.valueAsNumber)"
+          />
+          <span class="range-value">{{ settings().dofFocus.toFixed(1) }}</span>
+        </div>
+      </label>
 
-    <label appLabeledField label="DOF aperture">
-      <div class="range-field">
-        <input
-          #dofAperture
-          class="field-input"
-          type="range"
-          min="0.001"
-          max="0.05"
-          step="0.001"
-          [value]="settings().dofAperture"
-          [disabled]="!isControlSupported('dofAperture')"
-          (input)="updateRenderingNumber('dofAperture', dofAperture.valueAsNumber)"
-        />
-        <span class="range-value">{{ settings().dofAperture.toFixed(3) }}</span>
-      </div>
-    </label>
+      <label appLabeledField label="DOF aperture">
+        <div class="range-field">
+          <input
+            #dofAperture
+            class="field-input"
+            type="range"
+            min="0.001"
+            max="0.05"
+            step="0.001"
+            [value]="settings().dofAperture"
+            [disabled]="!isControlSupported('dofAperture')"
+            (input)="updateRenderingNumber('dofAperture', dofAperture.valueAsNumber)"
+          />
+          <span class="range-value">{{ settings().dofAperture.toFixed(3) }}</span>
+        </div>
+      </label>
 
-    <label appLabeledField label="DOF blur">
-      <div class="range-field">
-        <input
-          #dofBlur
-          class="field-input"
-          type="range"
-          min="0.001"
-          max="0.02"
-          step="0.001"
-          [value]="settings().dofMaxBlur"
-          [disabled]="!isControlSupported('dofMaxBlur')"
-          (input)="updateRenderingNumber('dofMaxBlur', dofBlur.valueAsNumber)"
-        />
-        <span class="range-value">{{ settings().dofMaxBlur.toFixed(3) }}</span>
-      </div>
-    </label>
+      <label appLabeledField label="DOF blur">
+        <div class="range-field">
+          <input
+            #dofBlur
+            class="field-input"
+            type="range"
+            min="0.001"
+            max="0.02"
+            step="0.001"
+            [value]="settings().dofMaxBlur"
+            [disabled]="!isControlSupported('dofMaxBlur')"
+            (input)="updateRenderingNumber('dofMaxBlur', dofBlur.valueAsNumber)"
+          />
+          <span class="range-value">{{ settings().dofMaxBlur.toFixed(3) }}</span>
+        </div>
+      </label>
+    }
 
     <label class="toggle-row">
       <span>Chromatic aberration</span>
@@ -231,22 +239,6 @@
   <section class="group" aria-label="Texture and filtering settings">
     <h4 class="group-title">Texture + Filtering</h4>
 
-    <label appLabeledField label="Anisotropy">
-      <div class="range-field">
-        <input
-          #anisotropy
-          class="field-input"
-          type="range"
-          min="1"
-          [max]="capabilities().maxAnisotropy || 1"
-          step="1"
-          [value]="settings().anisotropy"
-          (input)="updateRenderingNumber('anisotropy', anisotropy.valueAsNumber)"
-        />
-        <span class="range-value">{{ settings().anisotropy }}</span>
-      </div>
-    </label>
-
     <label appLabeledField label="Filtering">
       <select
         #filtering
@@ -260,6 +252,24 @@
         }
       </select>
     </label>
+
+    @if (showAnisotropy()) {
+      <label appLabeledField label="Anisotropy">
+        <div class="range-field">
+          <input
+            #anisotropy
+            class="field-input"
+            type="range"
+            min="1"
+            [max]="capabilities().maxAnisotropy || 1"
+            step="1"
+            [value]="settings().anisotropy"
+            (input)="updateRenderingNumber('anisotropy', anisotropy.valueAsNumber)"
+          />
+          <span class="range-value">{{ settings().anisotropy }}</span>
+        </div>
+      </label>
+    }
   </section>
 
   <section class="group" aria-label="Scene settings">
