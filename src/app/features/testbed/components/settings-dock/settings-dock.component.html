@@ -236,7 +236,7 @@
       >
         @for (mode of textureModes; track mode) {
           <option [value]="mode" [selected]="settings().textureFiltering === mode">
-            {{ mode }}
+            {{ mode.toUpperCase() }}
           </option>
         }
       </select>
