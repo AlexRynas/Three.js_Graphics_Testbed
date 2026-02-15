@@ -12,7 +12,7 @@ import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
 import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
-import { RGBShiftShader } from 'three/examples/jsm/shaders/RGBShiftShader.js';
+import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 import { CapabilitySummary, RenderingSettings, RendererMode } from './controls.model';
@@ -42,6 +42,7 @@ export type ComposerBundle = {
   dofPass: BokehPass | null;
   filmPass: FilmPass | null;
   vignettePass: ShaderPass | null;
+  finalPass: ShaderPass | null;
   webgpu: WebGpuPostBundle | null;
 };
 
@@ -250,6 +251,9 @@ export class TestbedRuntimeService {
     const vignettePass = new ShaderPass(VignetteShader);
     composer.addPass(vignettePass);
 
+    const finalPass = new ShaderPass(CopyShader);
+    composer.addPass(finalPass);
+
     return {
       composer,
       renderPass,
@@ -260,6 +264,7 @@ export class TestbedRuntimeService {
       dofPass,
       filmPass,
       vignettePass,
+      finalPass,
       webgpu: null,
     };
   }
@@ -275,6 +280,7 @@ export class TestbedRuntimeService {
       dofPass: null,
       filmPass: null,
       vignettePass: null,
+      finalPass: null,
       webgpu: null,
     };
   }

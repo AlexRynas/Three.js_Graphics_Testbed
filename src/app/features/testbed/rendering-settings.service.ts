@@ -157,7 +157,7 @@ export class RenderingSettingsService {
     }
 
     if (passes.vignettePass) {
-      passes.vignettePass.enabled = settings.vignette;
+      passes.vignettePass.enabled = !isWebGpu && settings.vignette;
     }
   }
 
