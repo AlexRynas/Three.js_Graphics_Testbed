@@ -67,6 +67,7 @@ export class SceneContentService {
     }
 
     if (!manifest || !manifest.lods || manifest.lods.length === 0) {
+      params.applyEnvironment(null);
       const proceduralGroup = this.buildProceduralScene(scene, threeModule);
       return {
         manifest,
