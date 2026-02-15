@@ -39,7 +39,6 @@ export class FeatureTogglesPanelComponent {
       { key: 'vol', label: 'Volumetric Lighting', supported: false },
       { key: 'lens', label: 'Lens Flares', supported: support.controls.lensFlares },
       { key: 'vignette', label: 'Vignette', supported: support.controls.vignette },
-      { key: 'chromatic', label: 'Chromatic Aberration', supported: support.controls.chromaticAberration },
       { key: 'film', label: 'Film Grain', supported: support.controls.filmGrain },
     ];
   });

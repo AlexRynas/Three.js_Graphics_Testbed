@@ -203,17 +203,6 @@
     }
 
     <label class="toggle-row">
-      <span>Chromatic aberration</span>
-      <input
-        #chromatic
-        type="checkbox"
-        [checked]="settings().chromaticAberration"
-        [disabled]="!isControlSupported('chromaticAberration')"
-        (change)="updateRenderingBoolean('chromaticAberration', chromatic.checked)"
-      />
-    </label>
-
-    <label class="toggle-row">
       <span>Vignette</span>
       <input
         #vignette

@@ -128,7 +128,6 @@ export class SettingsDockComponent {
       | 'ssaoEnabled'
       | 'ssrEnabled'
       | 'depthOfField'
-      | 'chromaticAberration'
       | 'vignette'
       | 'filmGrain'
       | 'lensFlares'

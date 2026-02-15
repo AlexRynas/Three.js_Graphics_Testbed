@@ -42,7 +42,6 @@ export type ComposerBundle = {
   dofPass: BokehPass | null;
   filmPass: FilmPass | null;
   vignettePass: ShaderPass | null;
-  chromaticPass: ShaderPass | null;
   webgpu: WebGpuPostBundle | null;
 };
 
@@ -251,9 +250,6 @@ export class TestbedRuntimeService {
     const vignettePass = new ShaderPass(VignetteShader);
     composer.addPass(vignettePass);
 
-    const chromaticPass = new ShaderPass(RGBShiftShader);
-    composer.addPass(chromaticPass);
-
     return {
       composer,
       renderPass,
@@ -264,7 +260,6 @@ export class TestbedRuntimeService {
       dofPass,
       filmPass,
       vignettePass,
-      chromaticPass,
       webgpu: null,
     };
   }
@@ -280,7 +275,6 @@ export class TestbedRuntimeService {
       dofPass: null,
       filmPass: null,
       vignettePass: null,
-      chromaticPass: null,
       webgpu: null,
     };
   }

@@ -1,7 +1,6 @@
 import { Injectable } from '@angular/core';
 import type { Node } from 'three/webgpu';
 import { float, mul, oneMinus, vec2 } from 'three/tsl';
-import { chromaticAberration } from 'three/examples/jsm/tsl/display/ChromaticAberrationNode.js';
 import { dof } from 'three/examples/jsm/tsl/display/DepthOfFieldNode.js';
 import { film } from 'three/examples/jsm/tsl/display/FilmNode.js';
 import { fxaa } from 'three/examples/jsm/tsl/display/FXAANode.js';
@@ -113,10 +112,6 @@ export class RenderingSettingsService {
         outputNode = film(outputNode, float(0.24));
       }
 
-      if (settings.chromaticAberration && support.controls.chromaticAberration) {
-        outputNode = chromaticAberration(outputNode, float(0.45), vec2(0.5, 0.5), float(1));
-      }
-
       passes.webgpu.postProcessing.outputNode = outputNode;
       passes.webgpu.postProcessing.needsUpdate = true;
       return;
@@ -163,10 +158,6 @@ export class RenderingSettingsService {
 
     if (passes.vignettePass) {
       passes.vignettePass.enabled = settings.vignette;
-    }
-
-    if (passes.chromaticPass) {
-      passes.chromaticPass.enabled = !isWebGpu && settings.chromaticAberration;
     }
   }
 
@@ -245,9 +236,6 @@ export class RenderingSettingsService {
 
     if (settings.ssaoEnabled && !support.controls.ssaoEnabled) unsupported.push('SSAO');
     if (settings.depthOfField && !support.controls.depthOfField) unsupported.push('Depth of Field');
-    if (settings.chromaticAberration && !support.controls.chromaticAberration) {
-      unsupported.push('Chromatic Aberration');
-    }
     if (settings.vignette && !support.controls.vignette) unsupported.push('Vignette');
     if (settings.lensFlares && !support.controls.lensFlares) unsupported.push('Lens Flares');
     if (settings.filmGrain && !support.controls.filmGrain) unsupported.push('Film Grain');
@@ -286,7 +274,6 @@ export class RenderingSettingsService {
         dofFocus: true,
         dofAperture: true,
         dofMaxBlur: true,
-        chromaticAberration: true,
         vignette: !isWebGpu,
         lensFlares: true,
         filmGrain: true,

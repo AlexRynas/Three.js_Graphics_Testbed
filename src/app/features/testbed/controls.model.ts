@@ -13,7 +13,6 @@ export type RenderingControlKey =
   | 'dofFocus'
   | 'dofAperture'
   | 'dofMaxBlur'
-  | 'chromaticAberration'
   | 'vignette'
   | 'lensFlares'
   | 'filmGrain';
@@ -44,7 +43,6 @@ export interface RenderingSettings {
   volumetricLighting: boolean;
   contactShadows: boolean;
   screenSpaceShadows: boolean;
-  chromaticAberration: boolean;
   vignette: boolean;
   lensFlares: boolean;
   filmGrain: boolean;
@@ -126,7 +124,6 @@ export const defaultRenderingSettings: RenderingSettings = {
   volumetricLighting: false,
   contactShadows: true,
   screenSpaceShadows: true,
-  chromaticAberration: false,
   vignette: true,
   lensFlares: true,
   filmGrain: false
