@@ -34,7 +34,7 @@ export class RenderingSettingsService {
   private readonly toggleControlToSettingKey: Partial<
     Record<keyof RenderingSupport['controls'], keyof RenderingSettings>
   > = {
-    ssaoEnabled: 'ssaoEnabled',
+    gtaoEnabled: 'gtaoEnabled',
     ssrEnabled: 'ssrEnabled',
     depthOfField: 'depthOfField',
     vignette: 'vignette',
@@ -91,15 +91,15 @@ export class RenderingSettingsService {
       const scenePass = passes.webgpu.scenePass;
       let outputNode: Node = scenePass.getTextureNode('output');
 
-      if (settings.ssaoEnabled && support.controls.ssaoEnabled) {
+      if (settings.gtaoEnabled && support.controls.gtaoEnabled) {
         const aoNode = ao(
           scenePass.getTextureNode('depth'),
           scenePass.getTextureNode('normal'),
           passes.webgpu.camera,
         );
-        aoNode.radius.value = Math.max(0.05, settings.ssaoRadius * 0.025);
+        aoNode.radius.value = Math.max(0.05, settings.gtaoRadius * 0.025);
         aoNode.samples.value =
-          settings.ssaoQuality === 'high' ? 24 : settings.ssaoQuality === 'low' ? 8 : 16;
+          settings.gtaoQuality === 'high' ? 24 : settings.gtaoQuality === 'low' ? 8 : 16;
         aoNode.setSize(width, height);
         outputNode = mul(outputNode, oneMinus(aoNode.getTextureNode()));
       }
@@ -177,11 +177,30 @@ export class RenderingSettingsService {
       passes.taaPass.sampleLevel = Math.max(0, settings.taaSamples - 1);
     }
 
-    if (passes.ssaoPass) {
-      passes.ssaoPass.enabled = !isWebGpu && settings.ssaoEnabled;
-      const qualityBoost =
-        settings.ssaoQuality === 'high' ? 1.4 : settings.ssaoQuality === 'low' ? 0.8 : 1;
-      passes.ssaoPass.kernelRadius = settings.ssaoRadius * qualityBoost;
+    if (passes.gtaoPass) {
+      passes.gtaoPass.enabled = !isWebGpu && settings.gtaoEnabled;
+      const quality = settings.gtaoQuality;
+      const qualityBoost = quality === 'high' ? 1.25 : quality === 'low' ? 0.8 : 1;
+      const samples = quality === 'high' ? 24 : quality === 'low' ? 8 : 16;
+      const pdRadius = quality === 'high' ? 10 : quality === 'low' ? 6 : 8;
+
+      passes.gtaoPass.output = 0;
+      passes.gtaoPass.blendIntensity = quality === 'low' ? 0.95 : 1;
+      passes.gtaoPass.updateGtaoMaterial({
+        radius: Math.max(0.05, settings.gtaoRadius * 0.025 * qualityBoost),
+        samples,
+        distanceFallOff: quality === 'low' ? 0.85 : 1,
+        thickness: quality === 'high' ? 1.1 : 1,
+      });
+      passes.gtaoPass.updatePdMaterial({
+        lumaPhi: quality === 'high' ? 12 : 10,
+        depthPhi: quality === 'high' ? 2.5 : 2,
+        normalPhi: quality === 'high' ? 3.5 : 3,
+        radius: pdRadius,
+        radiusExponent: quality === 'high' ? 2.2 : 2,
+        rings: quality === 'low' ? 2 : 3,
+        samples: quality === 'low' ? 8 : 16,
+      });
     }
 
     if (passes.dofPass) {
@@ -326,7 +345,7 @@ export class RenderingSettingsService {
       unsupported.push(settings.antialiasing.toUpperCase());
     }
 
-    if (settings.ssaoEnabled && !support.controls.ssaoEnabled) unsupported.push('SSAO');
+    if (settings.gtaoEnabled && !support.controls.gtaoEnabled) unsupported.push('GTAO');
     if (settings.depthOfField && !support.controls.depthOfField) unsupported.push('Depth of Field');
     if (settings.vignette && !support.controls.vignette) unsupported.push('Vignette');
     if (settings.lensFlares && !support.controls.lensFlares) unsupported.push('Lens Flares');
@@ -358,10 +377,10 @@ export class RenderingSettingsService {
       controls: {
         smaaQuality: true,
         taaSamples: true,
-        ssaoEnabled: true,
+        gtaoEnabled: true,
         ssrEnabled: isWebGpu,
-        ssaoRadius: true,
-        ssaoQuality: true,
+        gtaoRadius: true,
+        gtaoQuality: true,
         depthOfField: true,
         dofFocus: true,
         dofAperture: true,

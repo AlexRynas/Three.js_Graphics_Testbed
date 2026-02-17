@@ -56,7 +56,7 @@ export class SettingsDockComponent {
   protected readonly toneMappingModes: Array<SceneSettings['toneMapping']> = ['none', 'linear', 'reinhard', 'cineon', 'aces', 'neutral'];
   protected readonly showSmaaQuality = computed(() => this.settings().antialiasing === 'smaa');
   protected readonly showTaaSamples = computed(() => this.settings().antialiasing === 'taa');
-  protected readonly showSsaoChildren = computed(() => this.settings().ssaoEnabled);
+  protected readonly showGtaoChildren = computed(() => this.settings().gtaoEnabled);
   protected readonly showDofChildren = computed(() => this.settings().depthOfField);
   protected readonly showAnisotropy = computed(() => this.settings().textureFiltering === 'anisotropic');
 
@@ -84,12 +84,12 @@ export class SettingsDockComponent {
     this.emitRendering('smaaQuality', value as QualityLevel);
   }
 
-  updateSsaoQuality(value: string): void {
+  updateGtaoQuality(value: string): void {
     if (!this.qualityLevels.includes(value as QualityLevel)) {
       return;
     }
 
-    this.emitRendering('ssaoQuality', value as QualityLevel);
+    this.emitRendering('gtaoQuality', value as QualityLevel);
   }
 
   updateTextureFiltering(value: string): void {
@@ -119,7 +119,7 @@ export class SettingsDockComponent {
   updateRenderingNumber(
     key:
       | 'taaSamples'
-      | 'ssaoRadius'
+      | 'gtaoRadius'
       | 'anisotropy'
       | 'dofFocus'
       | 'dofAperture'
@@ -135,7 +135,7 @@ export class SettingsDockComponent {
 
   updateRenderingBoolean(
     key:
-      | 'ssaoEnabled'
+      | 'gtaoEnabled'
       | 'ssrEnabled'
       | 'depthOfField'
       | 'vignette'

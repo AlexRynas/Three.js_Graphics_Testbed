@@ -6,10 +6,10 @@ export type ShadowType = 'basic' | 'pcf' | 'pcfSoft' | 'vsm';
 export type RenderingControlKey =
   | 'smaaQuality'
   | 'taaSamples'
-  | 'ssaoEnabled'
+  | 'gtaoEnabled'
   | 'ssrEnabled'
-  | 'ssaoRadius'
-  | 'ssaoQuality'
+  | 'gtaoRadius'
+  | 'gtaoQuality'
   | 'depthOfField'
   | 'dofFocus'
   | 'dofAperture'
@@ -39,9 +39,9 @@ export interface RenderingSettings {
   antialiasing: AntiAliasingMode;
   smaaQuality: QualityLevel;
   taaSamples: number;
-  ssaoEnabled: boolean;
-  ssaoRadius: number;
-  ssaoQuality: QualityLevel;
+  gtaoEnabled: boolean;
+  gtaoRadius: number;
+  gtaoQuality: QualityLevel;
   ssrEnabled: boolean;
   globalIllumination: boolean;
   rayTracing: boolean;
@@ -117,9 +117,9 @@ export const defaultRenderingSettings: RenderingSettings = {
   antialiasing: 'msaa',
   smaaQuality: 'medium',
   taaSamples: 4,
-  ssaoEnabled: true,
-  ssaoRadius: 12,
-  ssaoQuality: 'medium',
+  gtaoEnabled: true,
+  gtaoRadius: 12,
+  gtaoQuality: 'medium',
   ssrEnabled: false,
   globalIllumination: false,
   rayTracing: false,

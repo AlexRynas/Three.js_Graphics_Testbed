@@ -6,7 +6,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
-import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
 import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
 import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
@@ -37,7 +37,7 @@ export type ComposerBundle = {
   fxaaPass: ShaderPass | null;
   smaaPass: SMAAPass | null;
   taaPass: TAARenderPass | null;
-  ssaoPass: SSAOPass | null;
+  gtaoPass: GTAOPass | null;
   dofPass: BokehPass | null;
   filmPass: FilmPass | null;
   vignettePass: ShaderPass | null;
@@ -223,8 +223,8 @@ export class TestbedRuntimeService {
     const taaPass = new TAARenderPass(scene, camera);
     composer.addPass(taaPass);
 
-    const ssaoPass = new SSAOPass(scene, camera, 1, 1);
-    composer.addPass(ssaoPass);
+    const gtaoPass = new GTAOPass(scene, camera, 1, 1);
+    composer.addPass(gtaoPass);
 
     const dofPass = new BokehPass(scene, camera, {
       focus: settings.dofFocus,
@@ -248,7 +248,7 @@ export class TestbedRuntimeService {
       fxaaPass,
       smaaPass,
       taaPass,
-      ssaoPass,
+      gtaoPass,
       dofPass,
       filmPass,
       vignettePass,
@@ -264,7 +264,7 @@ export class TestbedRuntimeService {
       fxaaPass: null,
       smaaPass: null,
       taaPass: null,
-      ssaoPass: null,
+      gtaoPass: null,
       dofPass: null,
       filmPass: null,
       vignettePass: null,
@@ -302,8 +302,8 @@ export class TestbedRuntimeService {
       bundle.smaaPass.setSize(width, height);
     }
 
-    if (bundle.ssaoPass) {
-      bundle.ssaoPass.setSize(width, height);
+    if (bundle.gtaoPass) {
+      bundle.gtaoPass.setSize(width, height);
     }
   }
 

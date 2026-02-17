@@ -106,43 +106,43 @@
     <h4 class="group-title">Post FX</h4>
 
     <label class="toggle-row">
-      <span>SSAO</span>
+      <span>GTAO</span>
       <input
-        #ssaoEnabled
+        #gtaoEnabled
         type="checkbox"
-        [checked]="settings().ssaoEnabled"
-        [disabled]="!isControlSupported('ssaoEnabled')"
-        (change)="updateRenderingBoolean('ssaoEnabled', ssaoEnabled.checked)"
+        [checked]="settings().gtaoEnabled"
+        [disabled]="!isControlSupported('gtaoEnabled')"
+        (change)="updateRenderingBoolean('gtaoEnabled', gtaoEnabled.checked)"
       />
     </label>
 
-    @if (showSsaoChildren()) {
-      <label appLabeledField label="SSAO radius">
+    @if (showGtaoChildren()) {
+      <label appLabeledField label="GTAO radius">
         <div class="range-field">
           <input
-            #ssaoRadius
+            #gtaoRadius
             class="field-input"
             type="range"
             min="1"
             max="32"
             step="1"
-            [value]="settings().ssaoRadius"
-            [disabled]="!isControlSupported('ssaoRadius')"
-            (input)="updateRenderingNumber('ssaoRadius', ssaoRadius.valueAsNumber)"
+            [value]="settings().gtaoRadius"
+            [disabled]="!isControlSupported('gtaoRadius')"
+            (input)="updateRenderingNumber('gtaoRadius', gtaoRadius.valueAsNumber)"
           />
-          <span class="range-value">{{ settings().ssaoRadius }}</span>
+          <span class="range-value">{{ settings().gtaoRadius }}</span>
         </div>
       </label>
 
-      <label appLabeledField label="SSAO quality">
+      <label appLabeledField label="GTAO quality">
         <select
-          #ssaoQuality
+          #gtaoQuality
           class="field-input"
-          [disabled]="!isControlSupported('ssaoQuality')"
-          (change)="updateSsaoQuality(ssaoQuality.value)"
+          [disabled]="!isControlSupported('gtaoQuality')"
+          (change)="updateGtaoQuality(gtaoQuality.value)"
         >
           @for (quality of qualityLevels; track quality) {
-            <option [value]="quality" [selected]="settings().ssaoQuality === quality">
+            <option [value]="quality" [selected]="settings().gtaoQuality === quality">
               {{ quality.toUpperCase() }}
             </option>
           }
