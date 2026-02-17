@@ -147,7 +147,7 @@ export class SettingsDockComponent {
     this.emitRendering(key, checked);
   }
 
-  updateSceneBoolean(key: 'autoRotate' | 'bvhEnabled', checked: boolean): void {
+  updateSceneBoolean(key: 'environmentMapEnabled' | 'autoRotate' | 'bvhEnabled', checked: boolean): void {
     this.emitScene(key, checked);
   }
 

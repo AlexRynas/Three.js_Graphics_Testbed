@@ -15,7 +15,7 @@ type LoadCollectionParams = {
   threeModule: ThreeModule;
   sceneSettings: SceneSettings;
   activeGroup: GroupInstance | null;
-  applyEnvironment: (hdrTexture: TextureInstance | null) => void;
+  applyEnvironment: (hdrTexture: TextureInstance | null, environmentUrl: string | null) => void;
 };
 
 type LoadCollectionResult = {
@@ -80,7 +80,7 @@ export class SceneContentService {
     }
 
     if (!manifest || !manifest.lods || manifest.lods.length === 0) {
-      params.applyEnvironment(null);
+      params.applyEnvironment(null, null);
       const proceduralGroup = this.buildProceduralScene(scene, threeModule);
       return {
         manifest,
@@ -94,12 +94,12 @@ export class SceneContentService {
     if (manifest.environment) {
       try {
         const hdr = await this.assetService.loadHdr(manifest.environment);
-        params.applyEnvironment(hdr as TextureInstance);
+        params.applyEnvironment(hdr as TextureInstance, manifest.environment);
       } catch {
-        params.applyEnvironment(null);
+        params.applyEnvironment(null, manifest.environment);
       }
     } else {
-      params.applyEnvironment(null);
+      params.applyEnvironment(null, null);
     }
 
     const group = new THREE.Group();

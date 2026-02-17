@@ -23,27 +23,51 @@ export class LightingEffectsService {
     threeModule: ThreeModule,
     mode: RendererMode,
     hdrTexture: TextureInstance | null,
+    enabled: boolean,
   ): void {
     const THREE = threeModule;
-    if (!scene || !renderer || mode !== 'webgl' || !('getContext' in renderer)) {
+    if (!scene || !renderer) {
+      hdrTexture?.dispose();
+      return;
+    }
+
+    if (!enabled) {
+      hdrTexture?.dispose();
+      this.disposeEnvironment(scene);
+      return;
+    }
+
+    if (mode !== 'webgl' && mode !== 'webgpu') {
+      hdrTexture?.dispose();
       return;
     }
 
     const pmremGenerator = new THREE.PMREMGenerator(renderer as never);
     pmremGenerator.compileEquirectangularShader();
 
+    const previousEnvironment = scene.environment;
     if (hdrTexture) {
       const envMap = pmremGenerator.fromEquirectangular(hdrTexture).texture;
       scene.environment = envMap;
-      scene.background = new THREE.Color('#070b10');
       hdrTexture.dispose();
     } else {
       const envMap = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
       scene.environment = envMap;
-      scene.background = new THREE.Color('#0b1117');
+    }
+
+    if (previousEnvironment && previousEnvironment !== scene.environment) {
+      previousEnvironment.dispose();
     }
 
     pmremGenerator.dispose();
+  }
+
+  private disposeEnvironment(scene: SceneInstance): void {
+    const environment = scene.environment;
+    if (environment) {
+      environment.dispose();
+      scene.environment = null;
+    }
   }
 
   syncLensFlares(

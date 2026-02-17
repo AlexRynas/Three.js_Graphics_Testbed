@@ -354,6 +354,16 @@
     </label>
 
     <label class="toggle-row">
+      <span>Environment map</span>
+      <input
+        #environmentMapEnabled
+        type="checkbox"
+        [checked]="sceneSettings().environmentMapEnabled"
+        (change)="updateSceneBoolean('environmentMapEnabled', environmentMapEnabled.checked)"
+      />
+    </label>
+
+    <label class="toggle-row">
       <span>Auto-rotate camera</span>
       <input
         #autoRotate

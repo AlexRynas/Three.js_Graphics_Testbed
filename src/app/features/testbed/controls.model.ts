@@ -61,6 +61,7 @@ export interface RenderingSettings {
 }
 
 export interface SceneSettings {
+  environmentMapEnabled: boolean;
   environmentIntensity: number;
   exposure: number;
   toneMapping: ToneMapping;
@@ -139,6 +140,7 @@ export const defaultRenderingSettings: RenderingSettings = {
 };
 
 export const defaultSceneSettings: SceneSettings = {
+  environmentMapEnabled: true,
   environmentIntensity: 1,
   exposure: 1,
   toneMapping: 'none',

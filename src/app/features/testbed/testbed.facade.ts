@@ -62,6 +62,9 @@ export class TestbedFacade {
   private lensflare: LensflareInstance | null = null;
   private usingMsaa = true;
   private currentMode: 'webgl' | 'webgpu' = 'webgl';
+  private activeEnvironmentUrl: string | null = null;
+  private environmentLoadToken = 0;
+  private environmentEnabledApplied = defaultSceneSettings.environmentMapEnabled;
 
   private viewportShellRef: ViewportComponent | null = null;
 
@@ -132,8 +135,8 @@ export class TestbedFacade {
   }
 
   applyPreset(preset: Preset): void {
-    this.settings.set({ ...preset.rendering });
-    this.sceneSettings.set({ ...preset.scene });
+    this.settings.set({ ...defaultRenderingSettings, ...preset.rendering });
+    this.sceneSettings.set({ ...defaultSceneSettings, ...preset.scene });
     this.presetName.set(preset.name);
   }
 
@@ -277,7 +280,7 @@ export class TestbedFacade {
     this.camera = setup.camera;
     this.refreshSceneControlConstraints();
 
-    this.applyEnvironment(null);
+    this.applyEnvironment(null, null);
   }
 
   private initControls(): void {
@@ -406,6 +409,10 @@ export class TestbedFacade {
 
     this.updateToneMapping(sceneSettings);
     this.updateControls(sceneSettings);
+    if (sceneSettings.environmentMapEnabled !== this.environmentEnabledApplied) {
+      this.environmentEnabledApplied = sceneSettings.environmentMapEnabled;
+      await this.syncEnvironmentFromState();
+    }
     this.sceneOptimizationService.applyEnvironmentIntensity(
       this.scene,
       this.activeThree,
@@ -503,6 +510,37 @@ export class TestbedFacade {
     this.status.set(`Renderer switched to ${mode.toUpperCase()}.`);
   }
 
+  private async syncEnvironmentFromState(): Promise<void> {
+    this.environmentLoadToken += 1;
+    const token = this.environmentLoadToken;
+    if (!this.sceneSettings().environmentMapEnabled) {
+      this.applyEnvironment(null, this.activeEnvironmentUrl);
+      return;
+    }
+
+    const environmentUrl = this.activeEnvironmentUrl;
+    if (!environmentUrl) {
+      this.applyEnvironment(null, null);
+      return;
+    }
+
+    try {
+      const hdr = (await this.assetService.loadHdr(environmentUrl)) as TextureInstance;
+      if (token !== this.environmentLoadToken) {
+        hdr.dispose();
+        return;
+      }
+
+      this.applyEnvironment(hdr, environmentUrl);
+    } catch {
+      if (token !== this.environmentLoadToken) {
+        return;
+      }
+
+      this.applyEnvironment(null, environmentUrl);
+    }
+  }
+
   private updateToneMapping(sceneSettings: SceneSettings): void {
     this.renderingSettingsService.applyToneMapping(this.renderer, this.activeThree, sceneSettings);
   }
@@ -515,13 +553,19 @@ export class TestbedFacade {
     this.controls.autoRotate = sceneSettings.autoRotate;
   }
 
-  private applyEnvironment(hdrTexture: TextureInstance | null): void {
+  private applyEnvironment(
+    hdrTexture: TextureInstance | null,
+    environmentUrl: string | null,
+  ): void {
+    this.activeEnvironmentUrl = environmentUrl;
+    this.environmentEnabledApplied = this.sceneSettings().environmentMapEnabled;
     this.lightingEffectsService.applyEnvironment(
       this.scene,
       this.renderer,
       this.activeThree,
       this.currentMode,
       hdrTexture,
+      this.sceneSettings().environmentMapEnabled,
     );
     this.sceneOptimizationService.applyEnvironmentIntensity(
       this.scene,
@@ -548,7 +592,8 @@ export class TestbedFacade {
       threeModule: this.activeThree,
       sceneSettings: this.sceneSettings(),
       activeGroup: this.activeGroup,
-      applyEnvironment: (hdrTexture) => this.applyEnvironment(hdrTexture),
+      applyEnvironment: (hdrTexture, environmentUrl) =>
+        this.applyEnvironment(hdrTexture, environmentUrl),
     });
 
     this.activeGroup = result.activeGroup;
