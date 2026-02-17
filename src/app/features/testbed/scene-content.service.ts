@@ -17,6 +17,7 @@ import {
   ThreeModule,
 } from './testbed-runtime.service';
 import {
+  SSR_WEBGPU_BASE_COLOR_NODE,
   SSR_WEBGL_FLOOR_TAG,
   SSR_WEBGL_SOURCE_FLOOR_TAG,
   SSR_WEBGPU_REFLECTOR_NODE,
@@ -396,7 +397,16 @@ export class SceneContentService {
         return;
       }
 
-      (material as unknown as { colorNode?: unknown }).colorNode = floorReflectorNode;
+      const materialWithNode = material as unknown as {
+        colorNode?: unknown;
+        userData?: Record<string, unknown>;
+      };
+
+      const userData = materialWithNode.userData ?? (materialWithNode.userData = {});
+      if (!(SSR_WEBGPU_BASE_COLOR_NODE in userData)) {
+        userData[SSR_WEBGPU_BASE_COLOR_NODE] = materialWithNode.colorNode ?? null;
+      }
+
       material.needsUpdate = true;
     };
 

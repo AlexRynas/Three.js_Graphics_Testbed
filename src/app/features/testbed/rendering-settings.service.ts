@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import type { Mesh } from 'three';
 import type { DirectionalLight, Node } from 'three/webgpu';
-import { float, mul, oneMinus, vec2 } from 'three/tsl';
+import { float, max, mix, mul, vec2, vec4 } from 'three/tsl';
 import { dof } from 'three/examples/jsm/tsl/display/DepthOfFieldNode.js';
 import { film } from 'three/examples/jsm/tsl/display/FilmNode.js';
 import { fxaa } from 'three/examples/jsm/tsl/display/FXAANode.js';
@@ -22,7 +22,13 @@ import {
 } from './controls.model';
 import { RendererInstance } from './frame-stats-tracker';
 import { ComposerBundle, ThreeModule, SceneInstance } from './testbed-runtime.service';
-import { SSR_EXCLUDE_TAG, SSR_WEBGL_FLOOR_TAG, SSR_WEBGL_SOURCE_FLOOR_TAG } from './constants';
+import {
+  SSR_EXCLUDE_TAG,
+  SSR_WEBGL_FLOOR_TAG,
+  SSR_WEBGL_SOURCE_FLOOR_TAG,
+  SSR_WEBGPU_BASE_COLOR_NODE,
+  SSR_WEBGPU_REFLECTOR_NODE,
+} from './constants';
 
 type PostProcessingPasses = ComposerBundle;
 
@@ -93,6 +99,25 @@ export class RenderingSettingsService {
       const scenePass = passes.webgpu.scenePass;
       let outputNode: Node = scenePass.getTextureNode('output');
 
+      if (settings.ssrEnabled && support.controls.ssrEnabled) {
+        const baseColorNode = scenePass.getTextureNode('output');
+        const metalnessNode = max(scenePass.getTextureNode('metalness').r, float(0.5));
+        const ssrNode = ssr(
+          baseColorNode,
+          scenePass.getTextureNode('depth'),
+          scenePass.getTextureNode('normal'),
+          metalnessNode,
+          null,
+          passes.webgpu.camera,
+        );
+        ssrNode.setSize(width, height);
+        ssrNode.quality.value = 1;
+        ssrNode.maxDistance.value = 1.75;
+        ssrNode.thickness.value = 0.12;
+        ssrNode.opacity.value = 1;
+        outputNode = vec4(mix(baseColorNode.rgb, ssrNode.rgb, ssrNode.a), baseColorNode.a);
+      }
+
       if (settings.gtaoEnabled && support.controls.gtaoEnabled) {
         const aoNode = ao(
           scenePass.getTextureNode('depth'),
@@ -103,7 +128,8 @@ export class RenderingSettingsService {
         aoNode.samples.value =
           settings.gtaoQuality === 'high' ? 24 : settings.gtaoQuality === 'low' ? 8 : 16;
         aoNode.setSize(width, height);
-        outputNode = mul(outputNode, oneMinus(aoNode.getTextureNode()));
+        const aoFactorNode = aoNode.getTextureNode().r;
+        outputNode = mul(outputNode, aoFactorNode);
       }
 
       if (settings.depthOfField && support.controls.depthOfField) {
@@ -114,22 +140,6 @@ export class RenderingSettingsService {
           Math.max(0.1, settings.dofAperture * 350),
           Math.max(0.1, settings.dofMaxBlur * 120),
         );
-      }
-
-      if (settings.ssrEnabled && support.controls.ssrEnabled) {
-        const ssrNode = ssr(
-          outputNode,
-          scenePass.getTextureNode('depth'),
-          scenePass.getTextureNode('normal'),
-          scenePass.getTextureNode('metalness'),
-          null,
-          passes.webgpu.camera,
-        );
-        ssrNode.setSize(width, height);
-        ssrNode.maxDistance.value = 1.75;
-        ssrNode.thickness.value = 0.12;
-        ssrNode.opacity.value = 1;
-        outputNode = ssrNode;
       }
 
       if (settings.antialiasing === 'fxaa' && support.antialiasingModes.fxaa) {
@@ -155,6 +165,7 @@ export class RenderingSettingsService {
         outputNode = film(outputNode, float(0.24));
       }
 
+      this.syncWebgpuFloorReflectorVisibility(scene, settings.ssrEnabled && support.controls.ssrEnabled);
       passes.webgpu.postProcessing.outputNode = outputNode;
       passes.webgpu.postProcessing.needsUpdate = true;
       return;
@@ -629,6 +640,56 @@ export class RenderingSettingsService {
       if (sourceFloor && typeof sourceFloor.visible === 'boolean') {
         sourceFloor.visible = !ssrEnabled;
       }
+    });
+  }
+
+  private syncWebgpuFloorReflectorVisibility(
+    scene: SceneInstance | null,
+    ssrEnabled: boolean,
+  ): void {
+    if (!scene) {
+      return;
+    }
+
+    scene.traverse((object) => {
+      if (!('isMesh' in object) || !object.isMesh) {
+        return;
+      }
+
+      const mesh = object as unknown as {
+        material: unknown;
+        userData?: Record<string, unknown>;
+      };
+      const floorReflectorNode = mesh.userData?.[SSR_WEBGPU_REFLECTOR_NODE] as Node | undefined;
+      if (!floorReflectorNode) {
+        return;
+      }
+
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      materials.forEach((material) => {
+        const materialWithNode = material as {
+          colorNode?: Node;
+          userData?: Record<string, unknown>;
+          needsUpdate?: boolean;
+        };
+
+        const userData = materialWithNode.userData ?? (materialWithNode.userData = {});
+        const currentColorNode = materialWithNode.colorNode;
+        if (!(SSR_WEBGPU_BASE_COLOR_NODE in userData) && currentColorNode !== floorReflectorNode) {
+          userData[SSR_WEBGPU_BASE_COLOR_NODE] = currentColorNode ?? null;
+        }
+
+        const baseColorNode = userData[SSR_WEBGPU_BASE_COLOR_NODE] as Node | null | undefined;
+        const nextColorNode = ssrEnabled ? floorReflectorNode : (baseColorNode ?? undefined);
+        if (materialWithNode.colorNode === nextColorNode) {
+          return;
+        }
+
+        materialWithNode.colorNode = nextColorNode;
+        if (typeof materialWithNode.needsUpdate === 'boolean') {
+          materialWithNode.needsUpdate = true;
+        }
+      });
     });
   }
 }

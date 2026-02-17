@@ -594,6 +594,13 @@ export class TestbedFacade {
       result.initialCameraPosition,
       result.initialControlTarget,
     );
+    this.renderingSettingsService.applyPostProcessing(
+      this.composerBundle,
+      this.settings(),
+      this.currentMode,
+      this.getViewportSize(),
+      this.scene,
+    );
     this.refreshInspector();
 
     if (result.procedural) {
