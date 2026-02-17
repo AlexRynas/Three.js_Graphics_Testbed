@@ -15,7 +15,7 @@ import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
-import { CapabilitySummary, RenderingSettings, RendererMode } from './controls.model';
+import { CapabilitySummary, RenderingSettings, RendererMode, Vector3Tuple } from './controls.model';
 import { RendererInstance } from './frame-stats-tracker';
 
 export type ThreeModule = typeof THREE | typeof THREE_WEBGPU;
@@ -129,7 +129,6 @@ export class TestbedRuntimeService {
     scene.background = new threeModule.Color('#0b1117');
 
     const camera = new threeModule.PerspectiveCamera(55, 1, 0.1, 200);
-    camera.position.set(0, 10, 30);
 
     const grid = new threeModule.GridHelper(50, 50, 0x1b3b3b, 0x10222c);
     grid.position.y = -0.01;
@@ -150,8 +149,22 @@ export class TestbedRuntimeService {
     controls.enableDamping = true;
     controls.autoRotate = autoRotate;
     controls.autoRotateSpeed = 0.5;
-    controls.target.set(0, 5, 0);
     return controls;
+  }
+
+  applyCameraAndControlTarget(
+    camera: CameraInstance | null,
+    controls: OrbitControls | null,
+    cameraPosition: Vector3Tuple,
+    controlTarget: Vector3Tuple,
+  ): void {
+    if (!camera || !controls) {
+      return;
+    }
+
+    camera.position.set(cameraPosition[0], cameraPosition[1], cameraPosition[2]);
+    controls.target.set(controlTarget[0], controlTarget[1], controlTarget[2]);
+    controls.update();
   }
 
   createComposer(

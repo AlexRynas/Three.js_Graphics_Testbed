@@ -514,6 +514,12 @@ export class TestbedFacade {
     });
 
     this.activeGroup = result.activeGroup;
+    this.runtimeService.applyCameraAndControlTarget(
+      this.camera,
+      this.controls,
+      result.initialCameraPosition,
+      result.initialControlTarget,
+    );
     this.refreshInspector();
 
     if (result.procedural) {

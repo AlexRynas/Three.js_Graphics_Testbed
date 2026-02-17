@@ -66,12 +66,16 @@ export interface CollectionRef {
   manifestUrl?: string;
 }
 
+export type Vector3Tuple = [number, number, number];
+
 export interface CollectionManifest {
   name: string;
   displayName: string;
   thumbnail?: string;
   lods: string[];
   environment?: string;
+  initialCameraPosition: Vector3Tuple;
+  initialControlTarget: Vector3Tuple;
 }
 
 export interface Preset {

@@ -86,6 +86,11 @@ flowchart TD
 
 The testbed expects a collections index at `/assets/collections-index.json` and optional per-collection manifests. If the index is missing, the app automatically uses a procedural demo scene.
 
+Each collection manifest must include:
+
+- `initialCameraPosition`: initial camera position as `[x, y, z]`
+- `initialControlTarget`: initial orbit-controls target as `[x, y, z]`
+
 Example collections index:
 
 ```json
@@ -105,6 +110,8 @@ Example manifest:
   "name": "the_shed",
   "displayName": "The Shed",
   "thumbnail": "thumbnails/the_shed.png",
+  "initialCameraPosition": [0, 10, 30],
+  "initialControlTarget": [0, 5, 0],
   "lods": [
     "export/high/the_shed_LOD0.glb",
     "export/medium/the_shed_LOD1.glb",

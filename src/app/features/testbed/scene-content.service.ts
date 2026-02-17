@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 
 import { AssetService } from './asset.service';
-import { CollectionManifest, CollectionRef, SceneSettings } from './controls.model';
+import { CollectionManifest, CollectionRef, SceneSettings, Vector3Tuple } from './controls.model';
 import {
   GroupInstance,
   SceneInstance,
@@ -22,7 +22,12 @@ type LoadCollectionResult = {
   manifest: CollectionManifest | null;
   activeGroup: GroupInstance | null;
   procedural: boolean;
+  initialCameraPosition: Vector3Tuple;
+  initialControlTarget: Vector3Tuple;
 };
+
+const PROCEDURAL_INITIAL_CAMERA_POSITION: Vector3Tuple = [0, 10, 30];
+const PROCEDURAL_INITIAL_CONTROL_TARGET: Vector3Tuple = [0, 5, 0];
 
 @Injectable({ providedIn: 'root' })
 export class SceneContentService {
@@ -64,10 +69,13 @@ export class SceneContentService {
       : null;
 
     if (!scene) {
+      const initialView = this.resolveInitialView(manifest);
       return {
         manifest,
         activeGroup: clearedGroup,
         procedural: false,
+        initialCameraPosition: initialView.initialCameraPosition,
+        initialControlTarget: initialView.initialControlTarget,
       };
     }
 
@@ -78,6 +86,8 @@ export class SceneContentService {
         manifest,
         activeGroup: proceduralGroup,
         procedural: true,
+        initialCameraPosition: PROCEDURAL_INITIAL_CAMERA_POSITION,
+        initialControlTarget: PROCEDURAL_INITIAL_CONTROL_TARGET,
       };
     }
 
@@ -97,10 +107,31 @@ export class SceneContentService {
 
     await this.loadLod(manifest.lods, group, threeModule, sceneSettings);
 
+    const initialView = this.resolveInitialView(manifest);
+
     return {
       manifest,
       activeGroup: group,
       procedural: false,
+      initialCameraPosition: initialView.initialCameraPosition,
+      initialControlTarget: initialView.initialControlTarget,
+    };
+  }
+
+  private resolveInitialView(manifest: CollectionManifest | null): {
+    initialCameraPosition: Vector3Tuple;
+    initialControlTarget: Vector3Tuple;
+  } {
+    if (!manifest) {
+      return {
+        initialCameraPosition: PROCEDURAL_INITIAL_CAMERA_POSITION,
+        initialControlTarget: PROCEDURAL_INITIAL_CONTROL_TARGET,
+      };
+    }
+
+    return {
+      initialCameraPosition: manifest.initialCameraPosition,
+      initialControlTarget: manifest.initialControlTarget,
     };
   }
 
