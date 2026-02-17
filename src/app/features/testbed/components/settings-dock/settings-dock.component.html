@@ -287,17 +287,6 @@
         (change)="updateRenderingBoolean('filmGrain', filmGrain.checked)"
       />
     </label>
-
-    <label class="toggle-row">
-      <span>Lens flares</span>
-      <input
-        #lensFlares
-        type="checkbox"
-        [checked]="settings().lensFlares"
-        [disabled]="!isControlSupported('lensFlares')"
-        (change)="updateRenderingBoolean('lensFlares', lensFlares.checked)"
-      />
-    </label>
   </section>
 
   <section class="group" aria-label="Texture settings">

@@ -141,7 +141,6 @@ export class SettingsDockComponent {
       | 'depthOfField'
       | 'vignette'
       | 'filmGrain'
-      | 'lensFlares'
       | 'contactShadows',
     checked: boolean,
   ): void {

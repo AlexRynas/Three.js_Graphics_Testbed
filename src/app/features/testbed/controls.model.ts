@@ -15,7 +15,6 @@ export type RenderingControlKey =
   | 'dofAperture'
   | 'dofMaxBlur'
   | 'vignette'
-  | 'lensFlares'
   | 'filmGrain';
 export type ToneMapping = 'none' | 'linear' | 'reinhard' | 'cineon' | 'aces' | 'neutral';
 
@@ -56,7 +55,6 @@ export interface RenderingSettings {
   contactShadows: boolean;
   shadowType: ShadowType;
   vignette: boolean;
-  lensFlares: boolean;
   filmGrain: boolean;
 }
 
@@ -135,7 +133,6 @@ export const defaultRenderingSettings: RenderingSettings = {
   contactShadows: true,
   shadowType: 'pcf',
   vignette: true,
-  lensFlares: true,
   filmGrain: false,
 };
 

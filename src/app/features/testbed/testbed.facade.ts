@@ -17,7 +17,7 @@ import { BenchmarkService } from './benchmark.service';
 import { CapabilitiesService } from './capabilities.service';
 import { FrameStatsTracker, RendererInstance } from './frame-stats-tracker';
 import { InspectorService } from './inspector.service';
-import { LensflareInstance, LightingEffectsService } from './lighting-effects.service';
+import { LightingEffectsService } from './lighting-effects.service';
 import { PresetService } from './preset.service';
 import { RenderingSettingsService } from './rendering-settings.service';
 import { SceneContentService } from './scene-content.service';
@@ -59,7 +59,6 @@ export class TestbedFacade {
   private latestStats: StatsSample | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private activeGroup: GroupInstance | null = null;
-  private lensflare: LensflareInstance | null = null;
   private usingMsaa = true;
   private currentMode: 'webgl' | 'webgpu' = 'webgl';
   private activeEnvironmentUrl: string | null = null;
@@ -437,7 +436,6 @@ export class TestbedFacade {
       this.currentMode,
       this.scene,
     );
-    this.applyLensFlares(settings);
     this.renderingSettingsService.applyTextureFiltering(
       this.renderer,
       this.scene,
@@ -498,7 +496,6 @@ export class TestbedFacade {
     if (backendChanged) {
       this.initControls();
     }
-    this.applyLensFlares(this.settings());
     this.initFrameStats();
     this.initComposer();
     this.updateSize();
@@ -571,16 +568,6 @@ export class TestbedFacade {
       this.scene,
       this.activeThree,
       this.sceneSettings().environmentIntensity,
-    );
-  }
-
-  private applyLensFlares(settings: RenderingSettings): void {
-    this.lensflare = this.lightingEffectsService.syncLensFlares(
-      this.scene,
-      this.lensflare,
-      settings.lensFlares,
-      this.activeThree,
-      this.currentMode,
     );
   }
 

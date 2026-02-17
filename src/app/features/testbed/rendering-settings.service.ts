@@ -38,7 +38,6 @@ export class RenderingSettingsService {
     ssrEnabled: 'ssrEnabled',
     depthOfField: 'depthOfField',
     vignette: 'vignette',
-    lensFlares: 'lensFlares',
     filmGrain: 'filmGrain',
   };
 
@@ -348,7 +347,6 @@ export class RenderingSettingsService {
     if (settings.gtaoEnabled && !support.controls.gtaoEnabled) unsupported.push('GTAO');
     if (settings.depthOfField && !support.controls.depthOfField) unsupported.push('Depth of Field');
     if (settings.vignette && !support.controls.vignette) unsupported.push('Vignette');
-    if (settings.lensFlares && !support.controls.lensFlares) unsupported.push('Lens Flares');
     if (settings.filmGrain && !support.controls.filmGrain) unsupported.push('Film Grain');
     if (settings.ssrEnabled && !support.controls.ssrEnabled) unsupported.push('SSR');
     if (settings.globalIllumination) unsupported.push('Global Illumination');
@@ -386,7 +384,6 @@ export class RenderingSettingsService {
         dofAperture: true,
         dofMaxBlur: true,
         vignette: !isWebGpu,
-        lensFlares: true,
         filmGrain: true,
       },
       controlHints: {},
