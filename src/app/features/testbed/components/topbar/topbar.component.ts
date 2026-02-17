@@ -16,5 +16,6 @@ export class TopbarComponent {
 
   readonly runBenchmark = output<void>();
   readonly exportMetrics = output<void>();
+  readonly exportSceneJson = output<void>();
   readonly toggleGui = output<void>();
 }

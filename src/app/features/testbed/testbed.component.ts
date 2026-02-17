@@ -117,4 +117,8 @@ export class TestbedComponent implements AfterViewInit {
   exportMetrics(): void {
     this.facade.exportMetrics();
   }
+
+  exportSceneJson(): void {
+    this.facade.exportSceneJson();
+  }
 }

@@ -18,6 +18,9 @@
     <button appPillButton type="button" variant="ghost" (click)="exportMetrics.emit()">
       Export metrics
     </button>
+    <button appPillButton type="button" variant="ghost" (click)="exportSceneJson.emit()">
+      Export scene JSON
+    </button>
     <button appPillButton type="button" variant="ghost" (click)="toggleGui.emit()">
       {{ settingsVisible() ? 'Hide controls' : 'Show controls' }}
     </button>

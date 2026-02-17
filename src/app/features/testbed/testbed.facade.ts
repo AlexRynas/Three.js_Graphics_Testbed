@@ -190,12 +190,27 @@ export class TestbedFacade {
       return;
     }
 
-    const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+    this.downloadJson(result, `benchmark-${Date.now()}.json`);
+  }
+
+  exportSceneJson(): void {
+    if (!this.scene) {
+      return;
+    }
+
+    const collectionId = this.activeCollectionId().trim() || 'scene';
+    const sceneJson = this.scene.toJSON();
+    this.downloadJson(sceneJson, `scene-${collectionId}-${Date.now()}.json`);
+  }
+
+  private downloadJson(payload: unknown, filename: string): void {
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `benchmark-${Date.now()}.json`;
+    link.href = objectUrl;
+    link.download = filename;
     link.click();
-    URL.revokeObjectURL(link.href);
+    URL.revokeObjectURL(objectUrl);
   }
 
   private async initialize(): Promise<void> {
