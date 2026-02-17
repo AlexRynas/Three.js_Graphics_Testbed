@@ -6,8 +6,8 @@
 >
   <h3 id="settings-dock-title" appSectionHeader>Render Settings</h3>
 
-  <section class="group" aria-label="Renderer settings">
-    <h4 class="group-title">Renderer</h4>
+  <section class="group" aria-label="Display and renderer settings">
+    <h4 class="group-title">Display + Renderer</h4>
 
     <label appLabeledField label="Mode">
       <select
@@ -22,6 +22,40 @@
         }
       </select>
     </label>
+
+    <label appLabeledField label="Tone mapping">
+      <select
+        #toneMapping
+        class="field-input"
+        (change)="updateToneMapping(toneMapping.value)"
+      >
+        @for (mode of toneMappingModes; track mode) {
+          <option [value]="mode" [selected]="sceneSettings().toneMapping === mode">
+            {{ mode.toUpperCase() }}
+          </option>
+        }
+      </select>
+    </label>
+
+    <label appLabeledField label="Exposure">
+      <div class="range-field">
+        <input
+          #exposure
+          class="field-input"
+          type="range"
+          min="0.4"
+          max="2"
+          step="0.05"
+          [value]="sceneSettings().exposure"
+          (input)="updateSceneNumber('exposure', exposure.valueAsNumber)"
+        />
+        <span class="range-value">{{ sceneSettings().exposure.toFixed(2) }}</span>
+      </div>
+    </label>
+  </section>
+
+  <section class="group" aria-label="Anti-aliasing settings">
+    <h4 class="group-title">Anti-Aliasing</h4>
 
     <label appLabeledField label="Anti-aliasing">
       <select
@@ -76,16 +110,10 @@
         </div>
       </label>
     }
+  </section>
 
-    <label class="toggle-row">
-      <span>Contact shadows</span>
-      <input
-        #contactShadows
-        type="checkbox"
-        [checked]="settings().contactShadows"
-        (change)="updateRenderingBoolean('contactShadows', contactShadows.checked)"
-      />
-    </label>
+  <section class="group" aria-label="Shadows and occlusion settings">
+    <h4 class="group-title">Shadows + Occlusion</h4>
 
     <label appLabeledField label="Shadow type">
       <select #shadowType class="field-input" (change)="updateShadowType(shadowType.value)">
@@ -100,10 +128,16 @@
         }
       </select>
     </label>
-  </section>
 
-  <section class="group" aria-label="Post effects settings">
-    <h4 class="group-title">Post FX</h4>
+    <label class="toggle-row">
+      <span>Contact shadows</span>
+      <input
+        #contactShadows
+        type="checkbox"
+        [checked]="settings().contactShadows"
+        (change)="updateRenderingBoolean('contactShadows', contactShadows.checked)"
+      />
+    </label>
 
     <label class="toggle-row">
       <span>GTAO</span>
@@ -149,6 +183,10 @@
         </select>
       </label>
     }
+  </section>
+
+  <section class="group" aria-label="Reflections and camera effects settings">
+    <h4 class="group-title">Reflections + Camera FX</h4>
 
     <label class="toggle-row" [class.disabled-row]="!isControlSupported('ssrEnabled')">
       <span>SSR</span>
@@ -247,10 +285,21 @@
         (change)="updateRenderingBoolean('filmGrain', filmGrain.checked)"
       />
     </label>
+
+    <label class="toggle-row">
+      <span>Lens flares</span>
+      <input
+        #lensFlares
+        type="checkbox"
+        [checked]="settings().lensFlares"
+        [disabled]="!isControlSupported('lensFlares')"
+        (change)="updateRenderingBoolean('lensFlares', lensFlares.checked)"
+      />
+    </label>
   </section>
 
-  <section class="group" aria-label="Texture and filtering settings">
-    <h4 class="group-title">Texture + Filtering</h4>
+  <section class="group" aria-label="Texture settings">
+    <h4 class="group-title">Textures</h4>
 
     <label appLabeledField label="Filtering">
       <select
@@ -285,8 +334,8 @@
     }
   </section>
 
-  <section class="group" aria-label="Scene settings">
-    <h4 class="group-title">Scene</h4>
+  <section class="group" aria-label="Scene behavior settings">
+    <h4 class="group-title">Scene Behavior</h4>
 
     <label appLabeledField label="Environment intensity">
       <div class="range-field">
@@ -302,36 +351,6 @@
         />
         <span class="range-value">{{ sceneSettings().environmentIntensity.toFixed(2) }}</span>
       </div>
-    </label>
-
-    <label appLabeledField label="Exposure">
-      <div class="range-field">
-        <input
-          #exposure
-          class="field-input"
-          type="range"
-          min="0.4"
-          max="2"
-          step="0.05"
-          [value]="sceneSettings().exposure"
-          (input)="updateSceneNumber('exposure', exposure.valueAsNumber)"
-        />
-        <span class="range-value">{{ sceneSettings().exposure.toFixed(2) }}</span>
-      </div>
-    </label>
-
-    <label appLabeledField label="Tone mapping">
-      <select
-        #toneMapping
-        class="field-input"
-        (change)="updateToneMapping(toneMapping.value)"
-      >
-        @for (mode of toneMappingModes; track mode) {
-          <option [value]="mode" [selected]="sceneSettings().toneMapping === mode">
-            {{ mode.toUpperCase() }}
-          </option>
-        }
-      </select>
     </label>
 
     <label class="toggle-row">
@@ -371,19 +390,8 @@
     </label>
   </section>
 
-  <section class="group" aria-label="Extra rendering settings">
-    <h4 class="group-title">Extras</h4>
-
-    <label class="toggle-row">
-      <span>Lens flares</span>
-      <input
-        #lensFlares
-        type="checkbox"
-        [checked]="settings().lensFlares"
-        [disabled]="!isControlSupported('lensFlares')"
-        (change)="updateRenderingBoolean('lensFlares', lensFlares.checked)"
-      />
-    </label>
+  <section class="group" aria-label="Experimental rendering settings">
+    <h4 class="group-title">Experimental</h4>
 
     <label class="toggle-row disabled-row">
       <span>Volumetric lighting</span>
