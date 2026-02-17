@@ -7,7 +7,6 @@ export type RenderingControlKey =
   | 'smaaQuality'
   | 'taaSamples'
   | 'ssaoEnabled'
-  | 'screenSpaceShadows'
   | 'ssrEnabled'
   | 'ssaoRadius'
   | 'ssaoQuality'
@@ -56,7 +55,6 @@ export interface RenderingSettings {
   volumetricLighting: boolean;
   contactShadows: boolean;
   shadowType: ShadowType;
-  screenSpaceShadows: boolean;
   vignette: boolean;
   lensFlares: boolean;
   filmGrain: boolean;
@@ -135,7 +133,6 @@ export const defaultRenderingSettings: RenderingSettings = {
   volumetricLighting: false,
   contactShadows: true,
   shadowType: 'pcf',
-  screenSpaceShadows: true,
   vignette: true,
   lensFlares: true,
   filmGrain: false,

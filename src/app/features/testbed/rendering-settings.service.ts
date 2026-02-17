@@ -6,7 +6,6 @@ import { film } from 'three/examples/jsm/tsl/display/FilmNode.js';
 import { fxaa } from 'three/examples/jsm/tsl/display/FXAANode.js';
 import { ao } from 'three/examples/jsm/tsl/display/GTAONode.js';
 import { smaa } from 'three/examples/jsm/tsl/display/SMAANode.js';
-import { sss } from 'three/examples/jsm/tsl/display/SSSNode.js';
 import { ssr } from 'three/examples/jsm/tsl/display/SSRNode.js';
 import { traa } from 'three/examples/jsm/tsl/display/TRAANode.js';
 
@@ -36,7 +35,6 @@ export class RenderingSettingsService {
     Record<keyof RenderingSupport['controls'], keyof RenderingSettings>
   > = {
     ssaoEnabled: 'ssaoEnabled',
-    screenSpaceShadows: 'screenSpaceShadows',
     ssrEnabled: 'ssrEnabled',
     depthOfField: 'depthOfField',
     vignette: 'vignette',
@@ -104,18 +102,6 @@ export class RenderingSettingsService {
           settings.ssaoQuality === 'high' ? 24 : settings.ssaoQuality === 'low' ? 8 : 16;
         aoNode.setSize(width, height);
         outputNode = mul(outputNode, oneMinus(aoNode.getTextureNode()));
-      }
-
-      if (settings.screenSpaceShadows && support.controls.screenSpaceShadows) {
-        const mainDirectionalLight = this.findMainDirectionalLight(scene);
-        if (mainDirectionalLight) {
-          const sssNode = sss(
-            scenePass.getTextureNode('depth'),
-            passes.webgpu.camera,
-            mainDirectionalLight,
-          );
-          outputNode = mul(outputNode, sssNode);
-        }
       }
 
       if (settings.depthOfField && support.controls.depthOfField) {
@@ -341,9 +327,6 @@ export class RenderingSettingsService {
     }
 
     if (settings.ssaoEnabled && !support.controls.ssaoEnabled) unsupported.push('SSAO');
-    if (settings.screenSpaceShadows && !support.controls.screenSpaceShadows) {
-      unsupported.push('Screen-space shadows');
-    }
     if (settings.depthOfField && !support.controls.depthOfField) unsupported.push('Depth of Field');
     if (settings.vignette && !support.controls.vignette) unsupported.push('Vignette');
     if (settings.lensFlares && !support.controls.lensFlares) unsupported.push('Lens Flares');
@@ -376,7 +359,6 @@ export class RenderingSettingsService {
         smaaQuality: true,
         taaSamples: true,
         ssaoEnabled: true,
-        screenSpaceShadows: isWebGpu,
         ssrEnabled: isWebGpu,
         ssaoRadius: true,
         ssaoQuality: true,
@@ -395,12 +377,13 @@ export class RenderingSettingsService {
   getSceneControlConstraints(scene: SceneInstance | null): RenderingControlConstraints {
     const constraints: RenderingControlConstraints = {};
 
-    if (!this.findMainDirectionalLight(scene)) {
-      constraints.screenSpaceShadows = {
-        supported: false,
-        hint: 'Requires a DirectionalLight in the active scene.',
-      };
-    }
+    // Here you can define restrictions that are imposed on any graphic settings if the scene does not meet the requirements.
+    // if (!this.checkSomeSceneRequirement(scene)) {
+    //   constraints.someGraphicalSetting = {
+    //     supported: false,
+    //     hint: 'Hint for the user why this setting is unavailable based on the current scene content',
+    //   };
+    // }
 
     return constraints;
   }
@@ -462,34 +445,6 @@ export class RenderingSettingsService {
     });
 
     return normalizedSettings;
-  }
-
-  hasDirectionalLight(scene: SceneInstance | null): boolean {
-    return this.findMainDirectionalLight(scene) !== null;
-  }
-
-  private findMainDirectionalLight(scene: SceneInstance | null): DirectionalLight | null {
-    if (!scene) {
-      return null;
-    }
-
-    let selectedLight: DirectionalLight | null = null;
-    scene.traverse((object) => {
-      const candidate = object as Partial<DirectionalLight> & {
-        isDirectionalLight?: boolean;
-        intensity?: number;
-      };
-
-      if (!candidate.isDirectionalLight) {
-        return;
-      }
-
-      if (!selectedLight || (candidate.intensity ?? 0) > selectedLight.intensity) {
-        selectedLight = object as DirectionalLight;
-      }
-    });
-
-    return selectedLight;
   }
 
   private resolveShadowType(

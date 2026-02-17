@@ -255,17 +255,9 @@ export class SceneContentService {
     shortBox.receiveShadow = true;
     group.add(shortBox);
 
-    // Light source geometry
-    const lightSourceGeometry = new THREE.CylinderGeometry(2.5, 2.5, 1, 64);
-    const lightSourceMaterial = new THREE.MeshBasicMaterial();
-    const lightSource = new THREE.Mesh(lightSourceGeometry, lightSourceMaterial);
-    lightSource.name = 'Light Source Mesh';
-    lightSource.position.y = 15;
-    group.add(lightSource);
-
-    // Point light
+    // Main light
     const pointLight = new THREE.PointLight('#ffffff', 100);
-    pointLight.name = 'Point Light';
+    pointLight.name = 'Main Point Light';
     pointLight.position.set(0, 14.45, 0);
     pointLight.distance = 100;
     pointLight.castShadow = true;
@@ -274,17 +266,13 @@ export class SceneContentService {
     pointLight.shadow.bias = -0.0025;
     group.add(pointLight);
 
-    // Main directional light
-    const mainDirectionalLight = new THREE.DirectionalLight('#ffffff', 3.5);
-    mainDirectionalLight.name = 'Main Directional Light';
-    mainDirectionalLight.position.set(8, 14, 6);
-    mainDirectionalLight.target.position.set(0, 3, 0);
-    mainDirectionalLight.castShadow = true;
-    mainDirectionalLight.shadow.mapSize.width = 1024;
-    mainDirectionalLight.shadow.mapSize.height = 1024;
-    mainDirectionalLight.shadow.bias = -0.0008;
-    group.add(mainDirectionalLight);
-    group.add(mainDirectionalLight.target);
+    // Main light mesh (to visualize the light source)
+    const pointLightMeshGeometry = new THREE.CylinderGeometry(2.5, 2.5, 1, 64);
+    const pointLightMeshMaterial = new THREE.MeshBasicMaterial();
+    const pointLightMesh = new THREE.Mesh(pointLightMeshGeometry, pointLightMeshMaterial);
+    pointLightMesh.name = 'Main Light Source Mesh';
+    pointLightMesh.position.y = 15;
+    group.add(pointLightMesh);
 
     // Ambient light
     const ambientLight = new THREE.AmbientLight('#0c0c0c');

@@ -141,8 +141,7 @@ export class SettingsDockComponent {
       | 'vignette'
       | 'filmGrain'
       | 'lensFlares'
-      | 'contactShadows'
-      | 'screenSpaceShadows',
+      | 'contactShadows',
     checked: boolean,
   ): void {
     this.emitRendering(key, checked);
