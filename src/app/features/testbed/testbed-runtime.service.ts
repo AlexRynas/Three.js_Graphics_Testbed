@@ -214,15 +214,6 @@ export class TestbedRuntimeService {
     const renderPass = new RenderPass(scene, camera);
     composer.addPass(renderPass);
 
-    const fxaaPass = new ShaderPass(FXAAShader);
-    composer.addPass(fxaaPass);
-
-    const smaaPass = new SMAAPass();
-    composer.addPass(smaaPass);
-
-    const taaPass = new TAARenderPass(scene, camera);
-    composer.addPass(taaPass);
-
     const gtaoPass = new GTAOPass(scene, camera, 1, 1);
     composer.addPass(gtaoPass);
 
@@ -232,6 +223,15 @@ export class TestbedRuntimeService {
       maxblur: settings.dofMaxBlur,
     });
     composer.addPass(dofPass);
+
+    const fxaaPass = new ShaderPass(FXAAShader);
+    composer.addPass(fxaaPass);
+
+    const smaaPass = new SMAAPass();
+    composer.addPass(smaaPass);
+
+    const taaPass = new TAARenderPass(scene, camera);
+    composer.addPass(taaPass);
 
     const filmPass = new FilmPass(0.25, false);
     composer.addPass(filmPass);
