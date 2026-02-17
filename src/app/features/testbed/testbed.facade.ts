@@ -5,6 +5,7 @@ import {
   CollectionRef,
   InspectorSnapshot,
   Preset,
+  RenderingControlConstraints,
   RenderingSupport,
   RenderingSettings,
   SceneSettings,
@@ -81,12 +82,17 @@ export class TestbedFacade {
   readonly presetName = signal('Custom');
   readonly metrics = this.benchmarkService.metrics;
   readonly benchmark = this.benchmarkService.benchmark;
+  readonly sceneControlConstraints = signal<RenderingControlConstraints>({});
 
   readonly capabilitySummary = this.capabilitiesService.capabilities;
   readonly presets = this.presetService.presets;
   readonly renderingSupport = computed<RenderingSupport>(() => {
     const mode = this.resolveRendererMode(this.settings().rendererMode);
-    return this.renderingSettingsService.getAvailability(mode);
+    const availability = this.renderingSettingsService.getAvailability(mode);
+    return this.renderingSettingsService.mergeControlConstraints(
+      availability,
+      this.sceneControlConstraints(),
+    );
   });
 
   constructor() {
@@ -254,6 +260,7 @@ export class TestbedFacade {
     const setup = this.runtimeService.createScene(this.activeThree);
     this.scene = setup.scene;
     this.camera = setup.camera;
+    this.refreshSceneControlConstraints();
 
     this.applyEnvironment(null);
   }
@@ -286,6 +293,7 @@ export class TestbedFacade {
       this.settings(),
       this.currentMode,
       this.getViewportSize(),
+      this.scene,
     );
   }
 
@@ -359,6 +367,20 @@ export class TestbedFacade {
       this.settings.update((current) => ({ ...current, rendererMode: resolvedMode }));
     }
 
+    const baseSupport = this.renderingSettingsService.getAvailability(resolvedMode);
+    const effectiveSupport = this.renderingSettingsService.mergeControlConstraints(
+      baseSupport,
+      this.sceneControlConstraints(),
+    );
+    const normalizedSettings = this.renderingSettingsService.normalizeSettingsForSupport(
+      settings,
+      effectiveSupport,
+    );
+    if (normalizedSettings !== settings) {
+      this.settings.set(normalizedSettings);
+      return;
+    }
+
     if (
       resolvedMode !== this.currentMode ||
       (resolvedMode === 'webgl' && this.needsMsaaRebuild(settings))
@@ -384,6 +406,7 @@ export class TestbedFacade {
       settings,
       this.currentMode,
       this.getViewportSize(),
+      this.scene,
     );
     const shadowResult = this.renderingSettingsService.applyShadowSettings(
       this.renderer,
@@ -514,6 +537,7 @@ export class TestbedFacade {
     });
 
     this.activeGroup = result.activeGroup;
+    this.refreshSceneControlConstraints();
     this.runtimeService.applyCameraAndControlTarget(
       this.camera,
       this.controls,
@@ -536,6 +560,11 @@ export class TestbedFacade {
     }
 
     this.inspector.set(this.inspectorService.buildSnapshot(this.scene, this.activeThree));
+  }
+
+  private refreshSceneControlConstraints(): void {
+    const constraints = this.renderingSettingsService.getSceneControlConstraints(this.scene);
+    this.sceneControlConstraints.set(constraints);
   }
 
   private startLoop(): void {
@@ -652,6 +681,7 @@ export class TestbedFacade {
     this.composerBundle = this.runtimeService.createEmptyComposerBundle();
     this.scene = null;
     this.camera = null;
+    this.sceneControlConstraints.set({});
     this.frameStats?.dispose();
     this.frameStats = null;
     this.resizeObserver?.disconnect();

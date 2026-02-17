@@ -167,4 +167,8 @@ export class SettingsDockComponent {
   protected isControlSupported(key: RenderingControlKey): boolean {
     return this.renderingSupport().controls[key];
   }
+
+  protected getControlHint(key: RenderingControlKey): string | null {
+    return this.renderingSupport().controlHints[key] ?? null;
+  }
 }

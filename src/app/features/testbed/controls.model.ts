@@ -7,6 +7,7 @@ export type RenderingControlKey =
   | 'smaaQuality'
   | 'taaSamples'
   | 'ssaoEnabled'
+  | 'screenSpaceShadows'
   | 'ssrEnabled'
   | 'ssaoRadius'
   | 'ssaoQuality'
@@ -22,7 +23,17 @@ export type ToneMapping = 'none' | 'linear' | 'reinhard' | 'cineon' | 'aces' | '
 export interface RenderingSupport {
   antialiasingModes: Record<AntiAliasingMode, boolean>;
   controls: Record<RenderingControlKey, boolean>;
+  controlHints: Partial<Record<RenderingControlKey, string>>;
 }
+
+export interface RenderingControlConstraint {
+  supported: boolean;
+  hint?: string;
+}
+
+export type RenderingControlConstraints = Partial<
+  Record<RenderingControlKey, RenderingControlConstraint>
+>;
 
 export interface RenderingSettings {
   rendererMode: RendererMode;

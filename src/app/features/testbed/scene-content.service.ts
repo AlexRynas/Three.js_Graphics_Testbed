@@ -264,6 +264,17 @@ export class SceneContentService {
     pointLight.shadow.bias = -0.0025;
     group.add(pointLight);
 
+    // Main directional light
+    const mainDirectionalLight = new THREE.DirectionalLight('#ffffff', 3.5);
+    mainDirectionalLight.position.set(8, 14, 6);
+    mainDirectionalLight.target.position.set(0, 3, 0);
+    mainDirectionalLight.castShadow = true;
+    mainDirectionalLight.shadow.mapSize.width = 1024;
+    mainDirectionalLight.shadow.mapSize.height = 1024;
+    mainDirectionalLight.shadow.bias = -0.0008;
+    group.add(mainDirectionalLight);
+    group.add(mainDirectionalLight.target);
+
     // Ambient light
     const ambientLight = new THREE.AmbientLight('#0c0c0c');
     group.add(ambientLight);

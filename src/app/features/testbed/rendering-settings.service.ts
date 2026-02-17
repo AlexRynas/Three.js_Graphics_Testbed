@@ -1,17 +1,19 @@
 import { Injectable } from '@angular/core';
-import type { Node } from 'three/webgpu';
+import type { DirectionalLight, Node } from 'three/webgpu';
 import { float, mul, oneMinus, vec2 } from 'three/tsl';
 import { dof } from 'three/examples/jsm/tsl/display/DepthOfFieldNode.js';
 import { film } from 'three/examples/jsm/tsl/display/FilmNode.js';
 import { fxaa } from 'three/examples/jsm/tsl/display/FXAANode.js';
 import { ao } from 'three/examples/jsm/tsl/display/GTAONode.js';
 import { smaa } from 'three/examples/jsm/tsl/display/SMAANode.js';
+import { sss } from 'three/examples/jsm/tsl/display/SSSNode.js';
 import { ssr } from 'three/examples/jsm/tsl/display/SSRNode.js';
 import { traa } from 'three/examples/jsm/tsl/display/TRAANode.js';
 
 import {
   CapabilitySummary,
   RendererMode,
+  RenderingControlConstraints,
   RenderingSettings,
   RenderingSupport,
   SceneSettings,
@@ -30,6 +32,17 @@ type ShadowApplyResult = {
 @Injectable({ providedIn: 'root' })
 export class RenderingSettingsService {
   private lastShadowSignature: string | null = null;
+  private readonly toggleControlToSettingKey: Partial<
+    Record<keyof RenderingSupport['controls'], keyof RenderingSettings>
+  > = {
+    ssaoEnabled: 'ssaoEnabled',
+    screenSpaceShadows: 'screenSpaceShadows',
+    ssrEnabled: 'ssrEnabled',
+    depthOfField: 'depthOfField',
+    vignette: 'vignette',
+    lensFlares: 'lensFlares',
+    filmGrain: 'filmGrain',
+  };
 
   applyToneMapping(
     renderer: RendererInstance | null,
@@ -71,6 +84,7 @@ export class RenderingSettingsService {
     settings: RenderingSettings,
     rendererMode: RendererMode,
     viewportSize: { width: number; height: number },
+    scene: SceneInstance | null,
   ): void {
     const support = this.getAvailability(rendererMode);
 
@@ -79,7 +93,7 @@ export class RenderingSettingsService {
       const scenePass = passes.webgpu.scenePass;
       let outputNode: Node = scenePass.getTextureNode('output');
 
-      if (settings.ssaoEnabled && settings.screenSpaceShadows && support.controls.ssaoEnabled) {
+      if (settings.ssaoEnabled && support.controls.ssaoEnabled) {
         const aoNode = ao(
           scenePass.getTextureNode('depth'),
           scenePass.getTextureNode('normal'),
@@ -90,6 +104,18 @@ export class RenderingSettingsService {
           settings.ssaoQuality === 'high' ? 24 : settings.ssaoQuality === 'low' ? 8 : 16;
         aoNode.setSize(width, height);
         outputNode = mul(outputNode, oneMinus(aoNode.getTextureNode()));
+      }
+
+      if (settings.screenSpaceShadows && support.controls.screenSpaceShadows) {
+        const mainDirectionalLight = this.findMainDirectionalLight(scene);
+        if (mainDirectionalLight) {
+          const sssNode = sss(
+            scenePass.getTextureNode('depth'),
+            passes.webgpu.camera,
+            mainDirectionalLight,
+          );
+          outputNode = mul(outputNode, sssNode);
+        }
       }
 
       if (settings.depthOfField && support.controls.depthOfField) {
@@ -166,7 +192,7 @@ export class RenderingSettingsService {
     }
 
     if (passes.ssaoPass) {
-      passes.ssaoPass.enabled = !isWebGpu && settings.ssaoEnabled && settings.screenSpaceShadows;
+      passes.ssaoPass.enabled = !isWebGpu && settings.ssaoEnabled;
       const qualityBoost =
         settings.ssaoQuality === 'high' ? 1.4 : settings.ssaoQuality === 'low' ? 0.8 : 1;
       passes.ssaoPass.kernelRadius = settings.ssaoRadius * qualityBoost;
@@ -201,7 +227,11 @@ export class RenderingSettingsService {
 
     renderer.shadowMap.enabled = settings.contactShadows;
 
-    const { type, resolvedType } = this.resolveShadowType(settings.shadowType, threeModule, rendererMode);
+    const { type, resolvedType } = this.resolveShadowType(
+      settings.shadowType,
+      threeModule,
+      rendererMode,
+    );
     renderer.shadowMap.type = type as typeof renderer.shadowMap.type;
 
     const shadowSignature = `${settings.contactShadows}:${resolvedType}:${rendererMode}`;
@@ -311,6 +341,9 @@ export class RenderingSettingsService {
     }
 
     if (settings.ssaoEnabled && !support.controls.ssaoEnabled) unsupported.push('SSAO');
+    if (settings.screenSpaceShadows && !support.controls.screenSpaceShadows) {
+      unsupported.push('Screen-space shadows');
+    }
     if (settings.depthOfField && !support.controls.depthOfField) unsupported.push('Depth of Field');
     if (settings.vignette && !support.controls.vignette) unsupported.push('Vignette');
     if (settings.lensFlares && !support.controls.lensFlares) unsupported.push('Lens Flares');
@@ -343,6 +376,7 @@ export class RenderingSettingsService {
         smaaQuality: true,
         taaSamples: true,
         ssaoEnabled: true,
+        screenSpaceShadows: isWebGpu,
         ssrEnabled: isWebGpu,
         ssaoRadius: true,
         ssaoQuality: true,
@@ -354,7 +388,108 @@ export class RenderingSettingsService {
         lensFlares: true,
         filmGrain: true,
       },
+      controlHints: {},
     };
+  }
+
+  getSceneControlConstraints(scene: SceneInstance | null): RenderingControlConstraints {
+    const constraints: RenderingControlConstraints = {};
+
+    if (!this.findMainDirectionalLight(scene)) {
+      constraints.screenSpaceShadows = {
+        supported: false,
+        hint: 'Requires a DirectionalLight in the active scene.',
+      };
+    }
+
+    return constraints;
+  }
+
+  mergeControlConstraints(
+    support: RenderingSupport,
+    constraints: RenderingControlConstraints,
+  ): RenderingSupport {
+    const mergedControls = { ...support.controls };
+    const mergedControlHints: Partial<Record<keyof RenderingSupport['controls'], string>> = {
+      ...support.controlHints,
+    };
+
+    Object.entries(constraints).forEach(([key, constraint]) => {
+      if (!constraint) {
+        return;
+      }
+
+      const controlKey = key as keyof RenderingSupport['controls'];
+      mergedControls[controlKey] = mergedControls[controlKey] && constraint.supported;
+
+      if (!mergedControls[controlKey] && constraint.hint) {
+        mergedControlHints[controlKey] = constraint.hint;
+      }
+    });
+
+    return {
+      ...support,
+      controls: mergedControls,
+      controlHints: mergedControlHints,
+    };
+  }
+
+  normalizeSettingsForSupport(
+    settings: RenderingSettings,
+    support: RenderingSupport,
+  ): RenderingSettings {
+    let normalizedSettings = settings;
+
+    Object.entries(this.toggleControlToSettingKey).forEach(([control, settingKey]) => {
+      if (!settingKey) {
+        return;
+      }
+
+      const controlKey = control as keyof RenderingSupport['controls'];
+      const settingsKey = settingKey as keyof RenderingSettings;
+      const settingValue = normalizedSettings[settingsKey];
+
+      if (typeof settingValue !== 'boolean') {
+        return;
+      }
+
+      if (settingValue && !support.controls[controlKey]) {
+        normalizedSettings = {
+          ...normalizedSettings,
+          [settingsKey]: false,
+        };
+      }
+    });
+
+    return normalizedSettings;
+  }
+
+  hasDirectionalLight(scene: SceneInstance | null): boolean {
+    return this.findMainDirectionalLight(scene) !== null;
+  }
+
+  private findMainDirectionalLight(scene: SceneInstance | null): DirectionalLight | null {
+    if (!scene) {
+      return null;
+    }
+
+    let selectedLight: DirectionalLight | null = null;
+    scene.traverse((object) => {
+      const candidate = object as Partial<DirectionalLight> & {
+        isDirectionalLight?: boolean;
+        intensity?: number;
+      };
+
+      if (!candidate.isDirectionalLight) {
+        return;
+      }
+
+      if (!selectedLight || (candidate.intensity ?? 0) > selectedLight.intensity) {
+        selectedLight = object as DirectionalLight;
+      }
+    });
+
+    return selectedLight;
   }
 
   private resolveShadowType(

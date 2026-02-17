@@ -385,15 +385,19 @@
       />
     </label>
 
-    <label class="toggle-row">
+    <label class="toggle-row" [class.disabled-row]="!isControlSupported('screenSpaceShadows')">
       <span>Screen-space shadows</span>
       <input
         #ssShadows
         type="checkbox"
         [checked]="settings().screenSpaceShadows"
+        [disabled]="!isControlSupported('screenSpaceShadows')"
         (change)="updateRenderingBoolean('screenSpaceShadows', ssShadows.checked)"
       />
     </label>
+    @if (getControlHint('screenSpaceShadows'); as sssHint) {
+      <p class="feature-note">{{ sssHint }}</p>
+    }
 
     <label class="toggle-row disabled-row">
       <span>Volumetric lighting</span>
