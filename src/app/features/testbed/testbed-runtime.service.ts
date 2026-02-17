@@ -23,7 +23,6 @@ export type ThreeModule = typeof THREE | typeof THREE_WEBGPU;
 export type SceneInstance = THREE.Scene | THREE_WEBGPU.Scene;
 export type CameraInstance = THREE.PerspectiveCamera | THREE_WEBGPU.PerspectiveCamera;
 export type GroupInstance = THREE.Group | THREE_WEBGPU.Group;
-export type DirectionalLightInstance = THREE.DirectionalLight | THREE_WEBGPU.DirectionalLight;
 export type TextureInstance = THREE.Texture | THREE_WEBGPU.Texture;
 
 export type WebGpuPostBundle = {
@@ -125,49 +124,20 @@ export class TestbedRuntimeService {
   createScene(threeModule: ThreeModule): {
     scene: SceneInstance;
     camera: CameraInstance;
-    primaryLight: DirectionalLightInstance;
   } {
     const scene = new threeModule.Scene();
     scene.background = new threeModule.Color('#0b1117');
 
     const camera = new threeModule.PerspectiveCamera(55, 1, 0.1, 200);
-    camera.position.set(5, 4.5, 8);
+    camera.position.set(0, 10, 30);
 
-    const grid = new threeModule.GridHelper(40, 40, 0x1b3b3b, 0x10222c);
+    const grid = new threeModule.GridHelper(50, 50, 0x1b3b3b, 0x10222c);
     grid.position.y = -0.01;
     scene.add(grid);
-
-    const floor = new threeModule.Mesh(
-      new threeModule.CircleGeometry(12, 64),
-      new threeModule.MeshStandardMaterial({
-        color: 0x0f1a22,
-        metalness: 0.1,
-        roughness: 0.7,
-      }),
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    scene.add(floor);
-
-    const ambient = new threeModule.AmbientLight(0x9fb3c8, 0.35);
-    scene.add(ambient);
-
-    const primaryLight = new threeModule.DirectionalLight(0xffffff, 1.2);
-    primaryLight.position.set(6, 8, 4);
-    primaryLight.castShadow = true;
-    primaryLight.shadow.mapSize.set(2048, 2048);
-    primaryLight.shadow.camera.near = 1;
-    primaryLight.shadow.camera.far = 40;
-    scene.add(primaryLight);
-
-    const rimLight = new threeModule.PointLight(0x45e3c2, 0.9, 40);
-    rimLight.position.set(-5, 4, -6);
-    scene.add(rimLight);
 
     return {
       scene,
       camera,
-      primaryLight,
     };
   }
 
@@ -180,6 +150,7 @@ export class TestbedRuntimeService {
     controls.enableDamping = true;
     controls.autoRotate = autoRotate;
     controls.autoRotateSpeed = 0.5;
+    controls.target.set(0, 5, 0);
     return controls;
   }
 

@@ -25,7 +25,6 @@ import { StatsSample } from './metrics.model';
 import {
   CameraInstance,
   ComposerBundle,
-  DirectionalLightInstance,
   GroupInstance,
   SceneInstance,
   TestbedRuntimeService,
@@ -59,7 +58,6 @@ export class TestbedFacade {
   private latestStats: StatsSample | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private activeGroup: GroupInstance | null = null;
-  private primaryLight: DirectionalLightInstance | null = null;
   private lensflare: LensflareInstance | null = null;
   private usingMsaa = true;
   private currentMode: 'webgl' | 'webgpu' = 'webgl';
@@ -256,7 +254,6 @@ export class TestbedFacade {
     const setup = this.runtimeService.createScene(this.activeThree);
     this.scene = setup.scene;
     this.camera = setup.camera;
-    this.primaryLight = setup.primaryLight;
 
     this.applyEnvironment(null);
   }
@@ -497,7 +494,7 @@ export class TestbedFacade {
 
   private applyLensFlares(settings: RenderingSettings): void {
     this.lensflare = this.lightingEffectsService.syncLensFlares(
-      this.primaryLight,
+      this.scene,
       this.lensflare,
       settings.lensFlares,
       this.activeThree,

@@ -11,12 +11,7 @@ import {
 
 import { RendererMode } from './controls.model';
 import { RendererInstance } from './frame-stats-tracker';
-import {
-  DirectionalLightInstance,
-  SceneInstance,
-  TextureInstance,
-  ThreeModule,
-} from './testbed-runtime.service';
+import { SceneInstance, TextureInstance, ThreeModule } from './testbed-runtime.service';
 
 export type LensflareInstance = WebGlLensflare | LensflareMesh;
 
@@ -52,20 +47,63 @@ export class LightingEffectsService {
   }
 
   syncLensFlares(
-    primaryLight: DirectionalLightInstance | null,
+    scene: SceneInstance | null,
     currentLensflare: LensflareInstance | null,
     enabled: boolean,
     threeModule: ThreeModule,
     mode: RendererMode,
   ): LensflareInstance | null {
-    if (!primaryLight) {
-      return currentLensflare;
+    if (!scene) {
+      if (currentLensflare && 'dispose' in currentLensflare) {
+        currentLensflare.dispose();
+      }
+      return null;
+    }
+
+    const getAllLightSourcesOfScene = (
+      obj: SceneInstance,
+    ): InstanceType<
+      ThreeModule['DirectionalLight'] | ThreeModule['PointLight'] | ThreeModule['SpotLight']
+    >[] => {
+      const lights: InstanceType<
+        ThreeModule['DirectionalLight'] | ThreeModule['PointLight'] | ThreeModule['SpotLight']
+      >[] = [];
+      obj.traverse((child) => {
+        if (
+          child instanceof threeModule.DirectionalLight ||
+          child instanceof threeModule.PointLight ||
+          child instanceof threeModule.SpotLight
+        ) {
+          lights.push(child);
+        }
+      });
+      return lights;
+    };
+
+    const removeLensflareFromLightSources = (
+      lightSources: InstanceType<
+        ThreeModule['DirectionalLight'] | ThreeModule['PointLight'] | ThreeModule['SpotLight']
+      >[],
+    ) => {
+      lightSources.forEach((light) => {
+        if (currentLensflare && currentLensflare.parent === light) {
+          light.remove(currentLensflare);
+        }
+      });
+    };
+
+    const lightSources = getAllLightSourcesOfScene(scene);
+    if (lightSources.length === 0) {
+      if (currentLensflare && 'dispose' in currentLensflare) {
+        currentLensflare.dispose();
+      }
+      return null;
     }
 
     const needsWebGpu = mode === 'webgpu';
     const hasWebGpuFlare = Boolean(currentLensflare && 'isLensflareMesh' in currentLensflare);
     if (currentLensflare && hasWebGpuFlare !== needsWebGpu) {
-      primaryLight.remove(currentLensflare);
+      removeLensflareFromLightSources(lightSources);
       if ('dispose' in currentLensflare) {
         currentLensflare.dispose();
       }
@@ -89,12 +127,12 @@ export class LightingEffectsService {
           new WebGlLensflareElement(this.createFlareTexture('#45e3c2', threeModule), 128, 0.4),
         );
       }
-      primaryLight.add(flare);
+      lightSources.forEach((light) => light.add(flare));
       return flare;
     }
 
     if (!enabled && currentLensflare) {
-      primaryLight.remove(currentLensflare);
+      removeLensflareFromLightSources(lightSources);
       if ('dispose' in currentLensflare) {
         currentLensflare.dispose();
       }

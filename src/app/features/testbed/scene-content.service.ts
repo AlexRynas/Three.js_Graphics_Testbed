@@ -2,7 +2,12 @@ import { Injectable, inject } from '@angular/core';
 
 import { AssetService } from './asset.service';
 import { CollectionManifest, CollectionRef, SceneSettings } from './controls.model';
-import { GroupInstance, SceneInstance, TextureInstance, ThreeModule } from './testbed-runtime.service';
+import {
+  GroupInstance,
+  SceneInstance,
+  TextureInstance,
+  ThreeModule,
+} from './testbed-runtime.service';
 
 type LoadCollectionParams = {
   collection: CollectionRef;
@@ -139,8 +144,7 @@ export class SceneContentService {
         }
       });
       lod.addLevel(scene, distance);
-    } catch {
-    }
+    } catch {}
   }
 
   private buildProceduralScene(scene: SceneInstance, threeModule: ThreeModule): GroupInstance {
@@ -148,39 +152,90 @@ export class SceneContentService {
     const group = new THREE.Group();
     scene.add(group);
 
-    const materialA = new THREE.MeshStandardMaterial({
-      color: 0x1f8f82,
-      metalness: 0.4,
-      roughness: 0.35,
-    });
-    const materialB = new THREE.MeshStandardMaterial({
-      color: 0xf7b545,
-      metalness: 0.2,
-      roughness: 0.5,
-    });
-    const materialC = new THREE.MeshStandardMaterial({
-      color: 0xff6b4a,
-      metalness: 0.7,
-      roughness: 0.2,
-    });
+    // Walls
+    const wallGeometry = new THREE.PlaneGeometry(1, 1);
 
-    const geoA = new THREE.TorusKnotGeometry(1.2, 0.4, 180, 32);
-    const geoB = new THREE.IcosahedronGeometry(1.2, 2);
-    const geoC = new THREE.BoxGeometry(1.6, 1.6, 1.6);
+    // Left wall - red
+    const redWallMaterial = new THREE.MeshPhysicalMaterial({ color: '#ff0000' });
+    const leftWall = new THREE.Mesh(wallGeometry, redWallMaterial);
+    leftWall.scale.set(20, 15, 1);
+    leftWall.rotation.y = Math.PI * 0.5;
+    leftWall.position.set(-10, 7.5, 0);
+    leftWall.receiveShadow = true;
+    group.add(leftWall);
 
-    const meshA = new THREE.Mesh(geoA, materialA);
-    meshA.position.set(-2.6, 1.6, 0);
-    meshA.castShadow = true;
+    // Right wall - green
+    const greenWallMaterial = new THREE.MeshPhysicalMaterial({ color: '#00ff00' });
+    const rightWall = new THREE.Mesh(wallGeometry, greenWallMaterial);
+    rightWall.scale.set(20, 15, 1);
+    rightWall.rotation.y = Math.PI * -0.5;
+    rightWall.position.set(10, 7.5, 0);
+    rightWall.receiveShadow = true;
+    group.add(rightWall);
 
-    const meshB = new THREE.Mesh(geoB, materialB);
-    meshB.position.set(0.2, 1.2, -1.8);
-    meshB.castShadow = true;
+    // Gray walls and boxes
+    const grayMaterial = new THREE.MeshPhysicalMaterial({ color: '#dddddd' });
 
-    const meshC = new THREE.Mesh(geoC, materialC);
-    meshC.position.set(2.6, 1.1, 1.6);
-    meshC.castShadow = true;
+    // Floor
+    const floor = new THREE.Mesh(wallGeometry, grayMaterial);
+    floor.scale.set(20, 20, 1);
+    floor.rotation.x = Math.PI * -0.5;
+    floor.receiveShadow = true;
+    group.add(floor);
 
-    group.add(meshA, meshB, meshC);
+    // Back wall
+    const backWall = new THREE.Mesh(wallGeometry, grayMaterial);
+    backWall.scale.set(15, 20, 1);
+    backWall.rotation.z = Math.PI * -0.5;
+    backWall.position.set(0, 7.5, -10);
+    backWall.receiveShadow = true;
+    group.add(backWall);
+
+    // Ceiling
+    const ceiling = new THREE.Mesh(wallGeometry, grayMaterial);
+    ceiling.scale.set(20, 20, 1);
+    ceiling.rotation.x = Math.PI * 0.5;
+    ceiling.position.set(0, 15, 0);
+    ceiling.receiveShadow = true;
+    group.add(ceiling);
+
+    // Boxes
+    const tallBoxGeometry = new THREE.BoxGeometry(5, 7, 5);
+    const tallBox = new THREE.Mesh(tallBoxGeometry, grayMaterial);
+    tallBox.rotation.y = Math.PI * 0.25;
+    tallBox.position.set(-3, 3.5, -2);
+    tallBox.castShadow = true;
+    tallBox.receiveShadow = true;
+    group.add(tallBox);
+
+    const shortBoxGeometry = new THREE.BoxGeometry(4, 4, 4);
+    const shortBox = new THREE.Mesh(shortBoxGeometry, grayMaterial);
+    shortBox.rotation.y = Math.PI * -0.1;
+    shortBox.position.set(4, 2, 4);
+    shortBox.castShadow = true;
+    shortBox.receiveShadow = true;
+    group.add(shortBox);
+
+    // Light source geometry
+    const lightSourceGeometry = new THREE.CylinderGeometry(2.5, 2.5, 1, 64);
+    const lightSourceMaterial = new THREE.MeshBasicMaterial();
+    const lightSource = new THREE.Mesh(lightSourceGeometry, lightSourceMaterial);
+    lightSource.position.y = 15;
+    group.add(lightSource);
+
+    // Point light
+    const pointLight = new THREE.PointLight('#ffffff', 100);
+    pointLight.position.set(0, 13, 0);
+    pointLight.distance = 100;
+    pointLight.castShadow = true;
+    pointLight.shadow.mapSize.width = 1024;
+    pointLight.shadow.mapSize.height = 1024;
+    pointLight.shadow.bias = -0.0025;
+    group.add(pointLight);
+
+    // Ambient light
+    const ambientLight = new THREE.AmbientLight('#0c0c0c');
+    group.add(ambientLight);
 
     return group;
   }
