@@ -207,11 +207,13 @@ export class SceneContentService {
     rightWall.receiveShadow = true;
     group.add(rightWall);
 
-    // Gray walls and boxes
-    const grayMaterial = new THREE.MeshPhysicalMaterial({ color: '#dddddd' });
+    // Dark gray walls and floor
+    const darkGrayMaterial = new THREE.MeshPhysicalMaterial({ color: '#A9A9A9' });
+    // Light gray boxes
+    const lightGrayMaterial = new THREE.MeshPhysicalMaterial({ color: '#D3D3D3' });
 
     // Floor
-    const floor = new THREE.Mesh(wallGeometry, grayMaterial);
+    const floor = new THREE.Mesh(wallGeometry, darkGrayMaterial);
     floor.name = 'Floor';
     floor.scale.set(20, 20, 1);
     floor.rotation.x = Math.PI * -0.5;
@@ -219,7 +221,7 @@ export class SceneContentService {
     group.add(floor);
 
     // Back wall
-    const backWall = new THREE.Mesh(wallGeometry, grayMaterial);
+    const backWall = new THREE.Mesh(wallGeometry, darkGrayMaterial);
     backWall.name = 'Back Wall';
     backWall.scale.set(15, 20, 1);
     backWall.rotation.z = Math.PI * -0.5;
@@ -228,7 +230,7 @@ export class SceneContentService {
     group.add(backWall);
 
     // Ceiling
-    const ceiling = new THREE.Mesh(wallGeometry, grayMaterial);
+    const ceiling = new THREE.Mesh(wallGeometry, darkGrayMaterial);
     ceiling.name = 'Ceiling';
     ceiling.scale.set(20, 20, 1);
     ceiling.rotation.x = Math.PI * 0.5;
@@ -238,7 +240,7 @@ export class SceneContentService {
 
     // Boxes
     const tallBoxGeometry = new THREE.BoxGeometry(5, 7, 5);
-    const tallBox = new THREE.Mesh(tallBoxGeometry, grayMaterial);
+    const tallBox = new THREE.Mesh(tallBoxGeometry, lightGrayMaterial);
     tallBox.name = 'Tall Box';
     tallBox.rotation.y = Math.PI * 0.25;
     tallBox.position.set(-3, 3.5, -2);
@@ -247,7 +249,7 @@ export class SceneContentService {
     group.add(tallBox);
 
     const shortBoxGeometry = new THREE.BoxGeometry(4, 4, 4);
-    const shortBox = new THREE.Mesh(shortBoxGeometry, grayMaterial);
+    const shortBox = new THREE.Mesh(shortBoxGeometry, lightGrayMaterial);
     shortBox.name = 'Short Box';
     shortBox.rotation.y = Math.PI * -0.1;
     shortBox.position.set(4, 2, 4);
