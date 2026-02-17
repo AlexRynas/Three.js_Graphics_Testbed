@@ -1,4 +1,5 @@
 import { Injectable } from '@angular/core';
+import type { Mesh } from 'three';
 import type { DirectionalLight, Node } from 'three/webgpu';
 import { float, mul, oneMinus, vec2 } from 'three/tsl';
 import { dof } from 'three/examples/jsm/tsl/display/DepthOfFieldNode.js';
@@ -8,6 +9,7 @@ import { ao } from 'three/examples/jsm/tsl/display/GTAONode.js';
 import { smaa } from 'three/examples/jsm/tsl/display/SMAANode.js';
 import { ssr } from 'three/examples/jsm/tsl/display/SSRNode.js';
 import { traa } from 'three/examples/jsm/tsl/display/TRAANode.js';
+import type { ReflectorForSSRPass } from 'three/examples/jsm/objects/ReflectorForSSRPass.js';
 
 import {
   CapabilitySummary,
@@ -20,6 +22,7 @@ import {
 } from './controls.model';
 import { RendererInstance } from './frame-stats-tracker';
 import { ComposerBundle, ThreeModule, SceneInstance } from './testbed-runtime.service';
+import { SSR_EXCLUDE_TAG, SSR_WEBGL_FLOOR_TAG, SSR_WEBGL_SOURCE_FLOOR_TAG } from './constants';
 
 type PostProcessingPasses = ComposerBundle;
 
@@ -83,7 +86,7 @@ export class RenderingSettingsService {
     viewportSize: { width: number; height: number },
     scene: SceneInstance | null,
   ): void {
-    const support = this.getAvailability(rendererMode);
+    const support = this.getAvailability(rendererMode, settings);
 
     if (passes.webgpu) {
       const { width, height } = viewportSize;
@@ -123,6 +126,9 @@ export class RenderingSettingsService {
           passes.webgpu.camera,
         );
         ssrNode.setSize(width, height);
+        ssrNode.maxDistance.value = 1.75;
+        ssrNode.thickness.value = 0.12;
+        ssrNode.opacity.value = 1;
         outputNode = ssrNode;
       }
 
@@ -161,6 +167,18 @@ export class RenderingSettingsService {
     const isWebGpu = rendererMode === 'webgpu';
     const aa = settings.antialiasing;
     const { width, height } = viewportSize;
+
+    if (passes.ssrPass) {
+      const ssrPass = passes.ssrPass;
+      const isSsrEnabled = !isWebGpu && settings.ssrEnabled && support.controls.ssrEnabled;
+      ssrPass.enabled = isSsrEnabled;
+      ssrPass.maxDistance = 2.25;
+      ssrPass.thickness = 0.08;
+      ssrPass.opacity = 0.9;
+      ssrPass.selects = isSsrEnabled ? this.resolveSsrIncludedMeshes(scene) : null;
+      ssrPass.groundReflector = isSsrEnabled ? this.resolvePrimaryWebglReflector(scene) : null;
+      this.syncWebglFloorReflectorVisibility(scene, isSsrEnabled);
+    }
 
     if (passes.fxaaPass) {
       passes.fxaaPass.enabled = !isWebGpu && aa === 'fxaa';
@@ -337,8 +355,9 @@ export class RenderingSettingsService {
     rendererMode: RendererMode,
     rendererLabel: string,
   ): string | null {
-    const support = this.getAvailability(rendererMode);
+    const support = this.getAvailability(rendererMode, settings);
     const unsupported: string[] = [];
+    const ssrConflictReason = this.getSsrConflictReason(settings);
 
     if (!support.antialiasingModes[settings.antialiasing]) {
       unsupported.push(settings.antialiasing.toUpperCase());
@@ -358,11 +377,17 @@ export class RenderingSettingsService {
       return null;
     }
 
+    if (ssrConflictReason && unsupported.length === 1 && unsupported[0] === 'SSR') {
+      return `SSR disabled: ${ssrConflictReason}`;
+    }
+
     return `Unsupported in ${rendererLabel}: ${unsupported.join(', ')}`;
   }
 
-  getAvailability(rendererMode: RendererMode): RenderingSupport {
+  getAvailability(rendererMode: RendererMode, settings?: RenderingSettings): RenderingSupport {
     const isWebGpu = rendererMode === 'webgpu';
+    const ssrConflictReason = settings ? this.getSsrConflictReason(settings) : null;
+    const ssrEnabled = !ssrConflictReason;
 
     return {
       antialiasingModes: {
@@ -376,7 +401,7 @@ export class RenderingSettingsService {
         smaaQuality: true,
         taaSamples: true,
         gtaoEnabled: true,
-        ssrEnabled: isWebGpu,
+        ssrEnabled,
         gtaoRadius: true,
         gtaoQuality: true,
         depthOfField: true,
@@ -386,7 +411,11 @@ export class RenderingSettingsService {
         vignette: !isWebGpu,
         filmGrain: true,
       },
-      controlHints: {},
+      controlHints: ssrConflictReason
+        ? {
+            ssrEnabled: `Disabled while ${ssrConflictReason}.`,
+          }
+        : {},
     };
   }
 
@@ -494,5 +523,112 @@ export class RenderingSettingsService {
     }
 
     return mode.toUpperCase();
+  }
+
+  private getSsrConflictReason(settings: RenderingSettings): string | null {
+    if (settings.pathTracing && settings.rayTracing) {
+      return 'Path Tracing and Ray Tracing are enabled';
+    }
+
+    if (settings.pathTracing) {
+      return 'Path Tracing is enabled';
+    }
+
+    if (settings.rayTracing) {
+      return 'Ray Tracing is enabled';
+    }
+
+    return null;
+  }
+
+  private resolveSsrIncludedMeshes(scene: SceneInstance | null): Mesh[] | null {
+    if (!scene) {
+      return null;
+    }
+
+    let hasExcludedMesh = false;
+    const includedMeshes: Mesh[] = [];
+
+    scene.traverse((object) => {
+      if (!('isMesh' in object) || !object.isMesh) {
+        return;
+      }
+
+      const mesh = object as unknown as Mesh;
+      const excluded = Boolean(object.userData?.[SSR_EXCLUDE_TAG]);
+      if (excluded) {
+        hasExcludedMesh = true;
+        return;
+      }
+
+      includedMeshes.push(mesh);
+    });
+
+    if (!hasExcludedMesh) {
+      return null;
+    }
+
+    return includedMeshes;
+  }
+
+  private resolvePrimaryWebglReflector(scene: SceneInstance | null): ReflectorForSSRPass | null {
+    if (!scene) {
+      return null;
+    }
+
+    let fallbackReflector: ReflectorForSSRPass | null = null;
+    let reflector: ReflectorForSSRPass | null = null;
+    scene.traverse((object) => {
+      if (reflector) {
+        return;
+      }
+
+      const candidate = object as unknown as ReflectorForSSRPass & {
+        isReflectorForSSRPass?: boolean;
+        userData?: Record<string, unknown>;
+      };
+      if (candidate.isReflectorForSSRPass && !fallbackReflector) {
+        fallbackReflector = candidate;
+      }
+
+      if (candidate.isReflectorForSSRPass && candidate.userData?.[SSR_WEBGL_FLOOR_TAG]) {
+        reflector = candidate;
+      }
+    });
+
+    return reflector ?? fallbackReflector;
+  }
+
+  private syncWebglFloorReflectorVisibility(
+    scene: SceneInstance | null,
+    ssrEnabled: boolean,
+  ): void {
+    if (!scene) {
+      return;
+    }
+
+    scene.traverse((object) => {
+      const reflector = object as unknown as ReflectorForSSRPass & {
+        isReflectorForSSRPass?: boolean;
+        userData?: Record<string, unknown>;
+      };
+
+      if (!reflector.isReflectorForSSRPass) {
+        return;
+      }
+
+      if (!reflector.userData?.[SSR_WEBGL_FLOOR_TAG]) {
+        return;
+      }
+
+      reflector.visible = ssrEnabled;
+
+      const sourceFloor = reflector.userData[SSR_WEBGL_SOURCE_FLOOR_TAG] as
+        | { visible?: boolean }
+        | undefined;
+      if (sourceFloor && typeof sourceFloor.visible === 'boolean') {
+        sourceFloor.visible = !ssrEnabled;
+      }
+    });
   }
 }

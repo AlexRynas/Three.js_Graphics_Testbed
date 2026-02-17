@@ -8,6 +8,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { TAARenderPass } from 'three/examples/jsm/postprocessing/TAARenderPass.js';
+import { SSRPass } from 'three/examples/jsm/postprocessing/SSRPass.js';
 import { BokehPass } from 'three/examples/jsm/postprocessing/BokehPass.js';
 import { FilmPass } from 'three/examples/jsm/postprocessing/FilmPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
@@ -34,6 +35,7 @@ export type WebGpuPostBundle = {
 export type ComposerBundle = {
   composer: EffectComposer | null;
   renderPass: RenderPass | null;
+  ssrPass: SSRPass | null;
   fxaaPass: ShaderPass | null;
   smaaPass: SMAAPass | null;
   taaPass: TAARenderPass | null;
@@ -214,6 +216,17 @@ export class TestbedRuntimeService {
     const renderPass = new RenderPass(scene, camera);
     composer.addPass(renderPass);
 
+    const ssrPass = new SSRPass({
+      renderer,
+      scene,
+      camera,
+      width: 1,
+      height: 1,
+      selects: null,
+      groundReflector: null,
+    });
+    composer.addPass(ssrPass);
+
     const gtaoPass = new GTAOPass(scene, camera, 1, 1);
     composer.addPass(gtaoPass);
 
@@ -245,6 +258,7 @@ export class TestbedRuntimeService {
     return {
       composer,
       renderPass,
+      ssrPass,
       fxaaPass,
       smaaPass,
       taaPass,
@@ -261,6 +275,7 @@ export class TestbedRuntimeService {
     return {
       composer: null,
       renderPass: null,
+      ssrPass: null,
       fxaaPass: null,
       smaaPass: null,
       taaPass: null,
@@ -304,6 +319,10 @@ export class TestbedRuntimeService {
 
     if (bundle.gtaoPass) {
       bundle.gtaoPass.setSize(width, height);
+    }
+
+    if (bundle.ssrPass) {
+      bundle.ssrPass.setSize(width, height);
     }
   }
 

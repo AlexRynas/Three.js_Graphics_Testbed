@@ -1,18 +1,32 @@
 import { Injectable, inject } from '@angular/core';
+import { reflector } from 'three/tsl';
+import { ReflectorForSSRPass } from 'three/examples/jsm/objects/ReflectorForSSRPass.js';
 
 import { AssetService } from './asset.service';
-import { CollectionManifest, CollectionRef, SceneSettings, Vector3Tuple } from './controls.model';
+import {
+  CollectionManifest,
+  CollectionRef,
+  RendererMode,
+  SceneSettings,
+  Vector3Tuple,
+} from './controls.model';
 import {
   GroupInstance,
   SceneInstance,
   TextureInstance,
   ThreeModule,
 } from './testbed-runtime.service';
+import {
+  SSR_WEBGL_FLOOR_TAG,
+  SSR_WEBGL_SOURCE_FLOOR_TAG,
+  SSR_WEBGPU_REFLECTOR_NODE,
+} from './constants';
 
 type LoadCollectionParams = {
   collection: CollectionRef;
   scene: SceneInstance | null;
   threeModule: ThreeModule;
+  rendererMode: RendererMode;
   sceneSettings: SceneSettings;
   activeGroup: GroupInstance | null;
   applyEnvironment: (hdrTexture: TextureInstance | null, environmentUrl: string | null) => void;
@@ -45,6 +59,14 @@ export class SceneContentService {
 
     scene.remove(activeGroup);
     activeGroup.traverse((object) => {
+      if (typeof object.userData?.[SSR_WEBGPU_REFLECTOR_NODE]?.dispose === 'function') {
+        object.userData[SSR_WEBGPU_REFLECTOR_NODE].dispose();
+      }
+
+      if (typeof (object as { dispose?: () => void }).dispose === 'function') {
+        (object as unknown as { dispose: () => void }).dispose();
+      }
+
       if (object instanceof THREE.Mesh) {
         object.geometry.dispose();
         if (Array.isArray(object.material)) {
@@ -59,7 +81,7 @@ export class SceneContentService {
   }
 
   async loadCollection(params: LoadCollectionParams): Promise<LoadCollectionResult> {
-    const { collection, scene, threeModule, sceneSettings } = params;
+    const { collection, scene, threeModule, rendererMode, sceneSettings } = params;
     const THREE = threeModule;
 
     const clearedGroup = this.clearActiveGroup(scene, params.activeGroup, threeModule);
@@ -81,7 +103,11 @@ export class SceneContentService {
 
     if (!manifest || !manifest.lods || manifest.lods.length === 0) {
       params.applyEnvironment(null, null);
-      const proceduralGroup = this.buildProceduralScene(scene, threeModule);
+      const proceduralGroup = this.buildProceduralScene(
+        scene,
+        threeModule,
+        rendererMode,
+      );
       return {
         manifest,
         activeGroup: proceduralGroup,
@@ -105,7 +131,7 @@ export class SceneContentService {
     const group = new THREE.Group();
     scene.add(group);
 
-    await this.loadLod(manifest.lods, group, threeModule, sceneSettings);
+    await this.loadLod(manifest.lods, group, threeModule, sceneSettings, rendererMode);
 
     const initialView = this.resolveInitialView(manifest);
 
@@ -140,17 +166,18 @@ export class SceneContentService {
     group: GroupInstance,
     threeModule: ThreeModule,
     sceneSettings: SceneSettings,
+    rendererMode: RendererMode,
   ): Promise<void> {
     const THREE = threeModule;
     const lod = new THREE.LOD();
     group.add(lod);
 
-    await this.loadLodLevel(lods[0], lod, 0, threeModule, sceneSettings);
+    await this.loadLodLevel(lods[0], lod, 0, threeModule, sceneSettings, rendererMode);
 
     const higher = lods.slice(1);
     higher.forEach((url, index) => {
       const distance = (index + 1) * 12 + sceneSettings.lodBias * 3;
-      void this.loadLodLevel(url, lod, distance, threeModule, sceneSettings);
+      void this.loadLodLevel(url, lod, distance, threeModule, sceneSettings, rendererMode);
     });
   }
 
@@ -160,11 +187,14 @@ export class SceneContentService {
     distance: number,
     threeModule: ThreeModule,
     sceneSettings: SceneSettings,
+    rendererMode: RendererMode,
   ): Promise<void> {
     const THREE = threeModule;
     try {
       const gltf = (await this.assetService.loadGltf(url)) as { scene: GroupInstance };
       const scene = gltf.scene;
+      const floorMeshes: Array<InstanceType<ThreeModule['Mesh']>> = [];
+
       scene.traverse((object) => {
         if (object instanceof THREE.Mesh) {
           object.castShadow = true;
@@ -172,13 +202,31 @@ export class SceneContentService {
           if (object.material instanceof THREE.MeshStandardMaterial) {
             object.material.envMapIntensity = sceneSettings.environmentIntensity;
           }
+
+          if (this.isFloorName(object.name)) {
+            floorMeshes.push(object);
+          }
         }
       });
+
+      floorMeshes.forEach((mesh) => {
+        if (rendererMode === 'webgl') {
+          this.addWebglFloorReflector(mesh, THREE);
+          return;
+        }
+
+        this.applyWebgpuFloorReflector(mesh, THREE);
+      });
+
       lod.addLevel(scene, distance);
     } catch {}
   }
 
-  private buildProceduralScene(scene: SceneInstance, threeModule: ThreeModule): GroupInstance {
+  private buildProceduralScene(
+    scene: SceneInstance,
+    threeModule: ThreeModule,
+    rendererMode: RendererMode,
+  ): GroupInstance {
     const THREE = threeModule;
     const group = new THREE.Group();
     group.name = 'Procedural Scene';
@@ -213,12 +261,19 @@ export class SceneContentService {
     const lightGrayMaterial = new THREE.MeshPhysicalMaterial({ color: '#D3D3D3' });
 
     // Floor
-    const floor = new THREE.Mesh(wallGeometry, darkGrayMaterial);
+    const floorMaterial = darkGrayMaterial.clone(); // Clone to have separate instance for reflector adjustments
+    const floor = new THREE.Mesh(wallGeometry, floorMaterial);
     floor.name = 'Floor';
     floor.scale.set(20, 20, 1);
     floor.rotation.x = Math.PI * -0.5;
     floor.receiveShadow = true;
     group.add(floor);
+
+    if (rendererMode === 'webgl') {
+      this.addWebglFloorReflector(floor, THREE);
+    } else {
+      this.applyWebgpuFloorReflector(floor, THREE);
+    }
 
     // Back wall
     const backWall = new THREE.Mesh(wallGeometry, darkGrayMaterial);
@@ -282,5 +337,75 @@ export class SceneContentService {
     group.add(ambientLight);
 
     return group;
+  }
+
+  private isFloorName(name: string): boolean {
+    return name.trim().toLowerCase().includes('floor');
+  }
+
+  private addWebglFloorReflector(
+    mesh: InstanceType<ThreeModule['Mesh']>,
+    threeModule: ThreeModule,
+  ): void {
+    const THREE = threeModule;
+    if (!(mesh instanceof THREE.Mesh) || !mesh.parent) {
+      return;
+    }
+
+    const reflector = new ReflectorForSSRPass(mesh.geometry.clone(), {
+      color: 0x808080,
+      useDepthTexture: true,
+      textureWidth: 1024,
+      textureHeight: 1024,
+    }) as unknown as InstanceType<ThreeModule['Mesh']>;
+
+    reflector.name = mesh.name;
+    reflector.position.copy(mesh.position);
+    reflector.quaternion.copy(mesh.quaternion);
+    reflector.scale.copy(mesh.scale);
+    reflector.castShadow = mesh.castShadow;
+    reflector.receiveShadow = true;
+    reflector.userData = {
+      ...mesh.userData,
+      [SSR_WEBGL_FLOOR_TAG]: true,
+      [SSR_WEBGL_SOURCE_FLOOR_TAG]: mesh,
+    };
+
+    reflector.visible = false;
+    mesh.visible = true;
+    mesh.parent.add(reflector);
+  }
+
+  private applyWebgpuFloorReflector(
+    mesh: InstanceType<ThreeModule['Mesh']>,
+    threeModule: ThreeModule,
+  ): void {
+    const THREE = threeModule;
+    if (!(mesh instanceof THREE.Mesh)) {
+      return;
+    }
+
+    const floorReflectorNode = reflector({
+      target: mesh,
+      resolutionScale: 0.75,
+      bounces: true,
+    });
+
+    const applyToMaterial = (material: unknown): void => {
+      if (!(material instanceof THREE.MeshStandardMaterial)) {
+        return;
+      }
+
+      (material as unknown as { colorNode?: unknown }).colorNode = floorReflectorNode;
+      material.needsUpdate = true;
+    };
+
+    if (Array.isArray(mesh.material)) {
+      mesh.material.forEach((material) => applyToMaterial(material));
+    } else {
+      applyToMaterial(mesh.material);
+    }
+
+    mesh.userData[SSR_WEBGPU_REFLECTOR_NODE] = floorReflectorNode;
   }
 }

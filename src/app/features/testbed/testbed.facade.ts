@@ -11,6 +11,7 @@ import {
   SceneSettings,
   defaultRenderingSettings,
   defaultSceneSettings,
+  RendererMode,
 } from './controls.model';
 import { AssetService } from './asset.service';
 import { BenchmarkService } from './benchmark.service';
@@ -60,7 +61,7 @@ export class TestbedFacade {
   private resizeObserver: ResizeObserver | null = null;
   private activeGroup: GroupInstance | null = null;
   private usingMsaa = true;
-  private currentMode: 'webgl' | 'webgpu' = 'webgl';
+  private currentMode: RendererMode = 'webgl';
   private activeEnvironmentUrl: string | null = null;
   private environmentLoadToken = 0;
   private environmentEnabledApplied = defaultSceneSettings.environmentMapEnabled;
@@ -89,8 +90,9 @@ export class TestbedFacade {
   readonly capabilitySummary = this.capabilitiesService.capabilities;
   readonly presets = this.presetService.presets;
   readonly renderingSupport = computed<RenderingSupport>(() => {
-    const mode = this.resolveRendererMode(this.settings().rendererMode);
-    const availability = this.renderingSettingsService.getAvailability(mode);
+    const settings = this.settings();
+    const mode = this.resolveRendererMode(settings.rendererMode);
+    const availability = this.renderingSettingsService.getAvailability(mode, settings);
     return this.renderingSettingsService.mergeControlConstraints(
       availability,
       this.sceneControlConstraints(),
@@ -252,18 +254,18 @@ export class TestbedFacade {
     this.status.set('Ready');
   }
 
-  private resolveRendererMode(requested: RenderingSettings['rendererMode']): 'webgl' | 'webgpu' {
+  private resolveRendererMode(requested: RenderingSettings['rendererMode']): RendererMode {
     return this.runtimeService.resolveRendererMode(requested, this.capabilitySummary());
   }
 
-  private setThreeModule(mode: 'webgl' | 'webgpu'): void {
+  private setThreeModule(mode: RendererMode): void {
     this.activeThree =
       mode === 'webgpu'
         ? this.runtimeService.getThreeModule('webgpu')
         : this.runtimeService.getThreeModule('webgl');
   }
 
-  private async createRenderer(canvas: HTMLCanvasElement, mode: 'webgl' | 'webgpu'): Promise<void> {
+  private async createRenderer(canvas: HTMLCanvasElement, mode: RendererMode): Promise<void> {
     this.disposeRenderer();
     const result = await this.runtimeService.createRenderer(canvas, mode, this.settings());
     this.activeThree = result.threeModule;
@@ -384,7 +386,7 @@ export class TestbedFacade {
       this.settings.update((current) => ({ ...current, rendererMode: resolvedMode }));
     }
 
-    const baseSupport = this.renderingSettingsService.getAvailability(resolvedMode);
+    const baseSupport = this.renderingSettingsService.getAvailability(resolvedMode, settings);
     const effectiveSupport = this.renderingSettingsService.mergeControlConstraints(
       baseSupport,
       this.sceneControlConstraints(),
@@ -469,7 +471,7 @@ export class TestbedFacade {
     return wantsMsaa !== this.usingMsaa;
   }
 
-  private async reloadRenderer(mode: 'webgl' | 'webgpu'): Promise<void> {
+  private async reloadRenderer(mode: RendererMode): Promise<void> {
     const viewportShell = this.viewportShellRef;
     if (!viewportShell) {
       return;
@@ -577,6 +579,7 @@ export class TestbedFacade {
       collection,
       scene: this.scene,
       threeModule: this.activeThree,
+      rendererMode: this.currentMode,
       sceneSettings: this.sceneSettings(),
       activeGroup: this.activeGroup,
       applyEnvironment: (hdrTexture, environmentUrl) =>

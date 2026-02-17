@@ -200,7 +200,7 @@
         (change)="updateRenderingBoolean('ssrEnabled', ssrEnabled.checked)"
       />
     </label>
-    <p class="feature-note">SSR availability depends on active renderer implementation.</p>
+    <p class="feature-note">{{ getControlHint('ssrEnabled') ?? 'SSR availability depends on active renderer implementation.' }}</p>
 
     <label class="toggle-row">
       <span>Depth of field</span>
