@@ -59,6 +59,7 @@ export class SettingsDockComponent {
   protected readonly showGtaoChildren = computed(() => this.settings().gtaoEnabled);
   protected readonly showDofChildren = computed(() => this.settings().depthOfField);
   protected readonly showAnisotropy = computed(() => this.settings().textureFiltering === 'anisotropic');
+  protected readonly showExposure = computed(() => this.sceneSettings().toneMapping !== 'none' && this.sceneSettings().toneMapping !== 'neutral');
 
   updateRendererMode(value: string): void {
     if (!this.rendererModes.includes(value as RendererMode)) {
