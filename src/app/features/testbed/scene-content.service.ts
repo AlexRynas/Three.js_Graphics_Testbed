@@ -181,6 +181,7 @@ export class SceneContentService {
   private buildProceduralScene(scene: SceneInstance, threeModule: ThreeModule): GroupInstance {
     const THREE = threeModule;
     const group = new THREE.Group();
+    group.name = 'Procedural Scene';
     scene.add(group);
 
     // Walls
@@ -189,6 +190,7 @@ export class SceneContentService {
     // Left wall - red
     const redWallMaterial = new THREE.MeshPhysicalMaterial({ color: '#ff0000' });
     const leftWall = new THREE.Mesh(wallGeometry, redWallMaterial);
+    leftWall.name = 'Left Wall';
     leftWall.scale.set(20, 15, 1);
     leftWall.rotation.y = Math.PI * 0.5;
     leftWall.position.set(-10, 7.5, 0);
@@ -198,6 +200,7 @@ export class SceneContentService {
     // Right wall - green
     const greenWallMaterial = new THREE.MeshPhysicalMaterial({ color: '#00ff00' });
     const rightWall = new THREE.Mesh(wallGeometry, greenWallMaterial);
+    rightWall.name = 'Right Wall';
     rightWall.scale.set(20, 15, 1);
     rightWall.rotation.y = Math.PI * -0.5;
     rightWall.position.set(10, 7.5, 0);
@@ -209,6 +212,7 @@ export class SceneContentService {
 
     // Floor
     const floor = new THREE.Mesh(wallGeometry, grayMaterial);
+    floor.name = 'Floor';
     floor.scale.set(20, 20, 1);
     floor.rotation.x = Math.PI * -0.5;
     floor.receiveShadow = true;
@@ -216,6 +220,7 @@ export class SceneContentService {
 
     // Back wall
     const backWall = new THREE.Mesh(wallGeometry, grayMaterial);
+    backWall.name = 'Back Wall';
     backWall.scale.set(15, 20, 1);
     backWall.rotation.z = Math.PI * -0.5;
     backWall.position.set(0, 7.5, -10);
@@ -224,6 +229,7 @@ export class SceneContentService {
 
     // Ceiling
     const ceiling = new THREE.Mesh(wallGeometry, grayMaterial);
+    ceiling.name = 'Ceiling';
     ceiling.scale.set(20, 20, 1);
     ceiling.rotation.x = Math.PI * 0.5;
     ceiling.position.set(0, 15, 0);
@@ -233,6 +239,7 @@ export class SceneContentService {
     // Boxes
     const tallBoxGeometry = new THREE.BoxGeometry(5, 7, 5);
     const tallBox = new THREE.Mesh(tallBoxGeometry, grayMaterial);
+    tallBox.name = 'Tall Box';
     tallBox.rotation.y = Math.PI * 0.25;
     tallBox.position.set(-3, 3.5, -2);
     tallBox.castShadow = true;
@@ -241,6 +248,7 @@ export class SceneContentService {
 
     const shortBoxGeometry = new THREE.BoxGeometry(4, 4, 4);
     const shortBox = new THREE.Mesh(shortBoxGeometry, grayMaterial);
+    shortBox.name = 'Short Box';
     shortBox.rotation.y = Math.PI * -0.1;
     shortBox.position.set(4, 2, 4);
     shortBox.castShadow = true;
@@ -251,12 +259,14 @@ export class SceneContentService {
     const lightSourceGeometry = new THREE.CylinderGeometry(2.5, 2.5, 1, 64);
     const lightSourceMaterial = new THREE.MeshBasicMaterial();
     const lightSource = new THREE.Mesh(lightSourceGeometry, lightSourceMaterial);
+    lightSource.name = 'Light Source Mesh';
     lightSource.position.y = 15;
     group.add(lightSource);
 
     // Point light
     const pointLight = new THREE.PointLight('#ffffff', 100);
-    pointLight.position.set(0, 13, 0);
+    pointLight.name = 'Point Light';
+    pointLight.position.set(0, 14.45, 0);
     pointLight.distance = 100;
     pointLight.castShadow = true;
     pointLight.shadow.mapSize.width = 1024;
@@ -266,6 +276,7 @@ export class SceneContentService {
 
     // Main directional light
     const mainDirectionalLight = new THREE.DirectionalLight('#ffffff', 3.5);
+    mainDirectionalLight.name = 'Main Directional Light';
     mainDirectionalLight.position.set(8, 14, 6);
     mainDirectionalLight.target.position.set(0, 3, 0);
     mainDirectionalLight.castShadow = true;
@@ -277,6 +288,7 @@ export class SceneContentService {
 
     // Ambient light
     const ambientLight = new THREE.AmbientLight('#0c0c0c');
+    ambientLight.name = 'Ambient Light';
     group.add(ambientLight);
 
     return group;

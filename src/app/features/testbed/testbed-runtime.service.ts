@@ -126,11 +126,14 @@ export class TestbedRuntimeService {
     camera: CameraInstance;
   } {
     const scene = new threeModule.Scene();
+    scene.name = 'Main Scene';
     scene.background = new threeModule.Color('#0b1117');
 
     const camera = new threeModule.PerspectiveCamera(55, 1, 0.1, 200);
+    camera.name = 'Main Camera';
 
     const grid = new threeModule.GridHelper(50, 50, 0x1b3b3b, 0x10222c);
+    grid.name = 'Grid Helper';
     grid.position.y = -0.01;
     scene.add(grid);
 
