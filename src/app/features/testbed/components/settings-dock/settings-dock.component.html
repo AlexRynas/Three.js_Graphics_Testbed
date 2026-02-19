@@ -326,6 +326,7 @@
         (change)="updateRenderingBoolean('pathTracing', pathTracing.checked)"
       />
     </label>
+    <p class="feature-note">Path tracing is experimental and may cause errors in some scenarios.</p>
 
     @if (!isWebglMode()) {
       <p class="feature-note">Path tracing is available only with the WebGL renderer.</p>
