@@ -202,6 +202,18 @@
     </label>
     <p class="feature-note">{{ getControlHint('ssrEnabled') ?? 'SSR availability depends on active renderer implementation.' }}</p>
 
+    <label class="toggle-row" [class.disabled-row]="!isControlSupported('globalIllumination')">
+      <span>Global illumination</span>
+      <input
+        #globalIllumination
+        type="checkbox"
+        [checked]="settings().globalIllumination"
+        [disabled]="!isControlSupported('globalIllumination')"
+        (change)="updateRenderingBoolean('globalIllumination', globalIllumination.checked)"
+      />
+    </label>
+    <p class="feature-note">{{ getControlHint('globalIllumination') ?? 'Global illumination is available only on the WebGPU renderer.' }}</p>
+
     <label class="toggle-row">
       <span>Depth of field</span>
       <input
@@ -393,11 +405,6 @@
 
   <section class="group" aria-label="Experimental rendering settings">
     <h4 class="group-title">Experimental</h4>
-
-    <label class="toggle-row disabled-row">
-      <span>Global illumination</span>
-      <input type="checkbox" [checked]="settings().globalIllumination" disabled />
-    </label>
 
     <label class="toggle-row disabled-row">
       <span>Ray tracing</span>

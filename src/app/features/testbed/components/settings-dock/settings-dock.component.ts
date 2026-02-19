@@ -138,6 +138,7 @@ export class SettingsDockComponent {
     key:
       | 'gtaoEnabled'
       | 'ssrEnabled'
+      | 'globalIllumination'
       | 'depthOfField'
       | 'vignette'
       | 'filmGrain'

@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import * as THREE from 'three';
 import * as THREE_WEBGPU from 'three/webgpu';
-import { metalness, mrt, normalView, output, pass, velocity } from 'three/tsl';
+import { diffuseColor, metalness, mrt, normalView, output, pass, velocity } from 'three/tsl';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
@@ -188,6 +188,7 @@ export class TestbedRuntimeService {
       scenePass.setMRT(
         mrt({
           output,
+          diffuseColor,
           normal: normalView,
           velocity,
           metalness,

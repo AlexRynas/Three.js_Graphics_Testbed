@@ -1,12 +1,13 @@
 import { Injectable } from '@angular/core';
 import type { Mesh } from 'three';
 import type { DirectionalLight, Node } from 'three/webgpu';
-import { float, max, mix, mul, vec2, vec4 } from 'three/tsl';
+import { add, float, max, mix, mul, vec2, vec4 } from 'three/tsl';
 import { dof } from 'three/examples/jsm/tsl/display/DepthOfFieldNode.js';
 import { film } from 'three/examples/jsm/tsl/display/FilmNode.js';
 import { fxaa } from 'three/examples/jsm/tsl/display/FXAANode.js';
 import { ao } from 'three/examples/jsm/tsl/display/GTAONode.js';
 import { smaa } from 'three/examples/jsm/tsl/display/SMAANode.js';
+import { ssgi } from 'three/examples/jsm/tsl/display/SSGINode.js';
 import { ssr } from 'three/examples/jsm/tsl/display/SSRNode.js';
 import { traa } from 'three/examples/jsm/tsl/display/TRAANode.js';
 import type { ReflectorForSSRPass } from 'three/examples/jsm/objects/ReflectorForSSRPass.js';
@@ -45,6 +46,7 @@ export class RenderingSettingsService {
   > = {
     gtaoEnabled: 'gtaoEnabled',
     ssrEnabled: 'ssrEnabled',
+    globalIllumination: 'globalIllumination',
     depthOfField: 'depthOfField',
     vignette: 'vignette',
     filmGrain: 'filmGrain',
@@ -116,6 +118,45 @@ export class RenderingSettingsService {
         ssrNode.thickness.value = 0.12;
         ssrNode.opacity.value = 1;
         outputNode = vec4(mix(baseColorNode.rgb, ssrNode.rgb, ssrNode.a), baseColorNode.a);
+      }
+
+      if (settings.globalIllumination && support.controls.globalIllumination) {
+        const giSourceNode = outputNode;
+        const ssgiNode = ssgi(
+          giSourceNode,
+          scenePass.getTextureNode('depth'),
+          scenePass.getTextureNode('normal'),
+          passes.webgpu.camera,
+        );
+
+        const ssgiNodeWithSize = ssgiNode as Node & {
+          setSize?: (nodeWidth: number, nodeHeight: number) => void;
+          sliceCount?: { value: number };
+          stepCount?: { value: number };
+          aoIntensity?: { value: number };
+          giIntensity?: { value: number };
+          radius?: { value: number };
+        };
+
+        ssgiNodeWithSize.setSize?.(width, height);
+        if (ssgiNodeWithSize.sliceCount) {
+          ssgiNodeWithSize.sliceCount.value = 2;
+        }
+        if (ssgiNodeWithSize.stepCount) {
+          ssgiNodeWithSize.stepCount.value = 8;
+        }
+        if (ssgiNodeWithSize.aoIntensity) {
+          ssgiNodeWithSize.aoIntensity.value = 1;
+        }
+        if (ssgiNodeWithSize.giIntensity) {
+          ssgiNodeWithSize.giIntensity.value = 1.25;
+        }
+        if (ssgiNodeWithSize.radius) {
+          ssgiNodeWithSize.radius.value = 10;
+        }
+
+        const diffuseNode = scenePass.getTextureNode('diffuseColor');
+        outputNode = vec4(add(mul(giSourceNode.rgb, ssgiNode.a), mul(diffuseNode.rgb, ssgiNode.rgb)), giSourceNode.a);
       }
 
       if (settings.gtaoEnabled && support.controls.gtaoEnabled) {
@@ -379,7 +420,9 @@ export class RenderingSettingsService {
     if (settings.vignette && !support.controls.vignette) unsupported.push('Vignette');
     if (settings.filmGrain && !support.controls.filmGrain) unsupported.push('Film Grain');
     if (settings.ssrEnabled && !support.controls.ssrEnabled) unsupported.push('SSR');
-    if (settings.globalIllumination) unsupported.push('Global Illumination');
+    if (settings.globalIllumination && !support.controls.globalIllumination) {
+      unsupported.push('Global Illumination');
+    }
     if (settings.rayTracing) unsupported.push('Ray Tracing');
     if (settings.pathTracing) unsupported.push('Path Tracing');
 
@@ -412,6 +455,7 @@ export class RenderingSettingsService {
         taaSamples: true,
         gtaoEnabled: true,
         ssrEnabled,
+        globalIllumination: isWebGpu,
         gtaoRadius: true,
         gtaoQuality: true,
         depthOfField: true,
@@ -421,11 +465,18 @@ export class RenderingSettingsService {
         vignette: !isWebGpu,
         filmGrain: true,
       },
-      controlHints: ssrConflictReason
-        ? {
-            ssrEnabled: `Disabled while ${ssrConflictReason}.`,
-          }
-        : {},
+      controlHints: {
+        ...(ssrConflictReason
+          ? {
+              ssrEnabled: `Disabled while ${ssrConflictReason}.`,
+            }
+          : {}),
+        ...(!isWebGpu
+          ? {
+              globalIllumination: 'Requires the WebGPU renderer.',
+            }
+          : {}),
+      },
     };
   }
 

@@ -8,6 +8,7 @@ export type RenderingControlKey =
   | 'taaSamples'
   | 'gtaoEnabled'
   | 'ssrEnabled'
+  | 'globalIllumination'
   | 'gtaoRadius'
   | 'gtaoQuality'
   | 'depthOfField'
