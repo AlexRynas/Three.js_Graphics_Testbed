@@ -56,8 +56,9 @@
     }
   </section>
 
-  <section class="group" aria-label="Anti-aliasing settings">
-    <h4 class="group-title">Anti-Aliasing</h4>
+  @if (showRasterControls()) {
+    <section class="group" aria-label="Anti-aliasing settings">
+      <h4 class="group-title">Anti-Aliasing</h4>
 
     <label appLabeledField label="Anti-aliasing">
       <select
@@ -112,10 +113,12 @@
         </div>
       </label>
     }
-  </section>
+    </section>
+  }
 
-  <section class="group" aria-label="Shadows and occlusion settings">
-    <h4 class="group-title">Shadows + Occlusion</h4>
+  @if (showRasterControls()) {
+    <section class="group" aria-label="Shadows and occlusion settings">
+      <h4 class="group-title">Shadows + Occlusion</h4>
 
     <label appLabeledField label="Shadow type">
       <select #shadowType class="field-input" (change)="updateShadowType(shadowType.value)">
@@ -185,10 +188,12 @@
         </select>
       </label>
     }
-  </section>
+    </section>
+  }
 
-  <section class="group" aria-label="Reflections and camera effects settings">
-    <h4 class="group-title">Reflections + Camera FX</h4>
+  @if (showPostProcessingControls()) {
+    <section class="group" aria-label="Reflections and camera effects settings">
+      <h4 class="group-title">Reflections + Camera FX</h4>
 
     <label class="toggle-row" [class.disabled-row]="!isControlSupported('ssrEnabled')">
       <span>SSR</span>
@@ -299,7 +304,8 @@
         (change)="updateRenderingBoolean('filmGrain', filmGrain.checked)"
       />
     </label>
-  </section>
+    </section>
+  }
 
   <section class="group" aria-label="Ray/Path tracing settings">
     <h4 class="group-title">Ray/Path tracing</h4>
@@ -310,14 +316,177 @@
     </label>
     <p class="feature-note">No ready-made NPM package currently provides an out-of-the-box Three.js ray tracing implementation; manual integration would take significant engineering time.</p>
 
-    <label class="toggle-row disabled-row">
+    <label class="toggle-row" [class.disabled-row]="!isWebglMode()">
       <span>Path tracing</span>
-      <input type="checkbox" [checked]="settings().pathTracing" disabled />
+      <input
+        #pathTracing
+        type="checkbox"
+        [checked]="settings().pathTracing"
+        [disabled]="!isWebglMode()"
+        (change)="updateRenderingBoolean('pathTracing', pathTracing.checked)"
+      />
     </label>
+
+    @if (!isWebglMode()) {
+      <p class="feature-note">Path tracing is available only with the WebGL renderer.</p>
+    }
+
+    @if (isPathTracingEnabled()) {
+      <label appLabeledField label="Bounces">
+        <div class="range-field">
+          <input
+            #ptBounces
+            class="field-input"
+            type="range"
+            min="1"
+            max="12"
+            step="1"
+            [value]="settings().pathTracingBounces"
+            (input)="updateRenderingNumber('pathTracingBounces', ptBounces.valueAsNumber)"
+          />
+          <span class="range-value">{{ settings().pathTracingBounces }}</span>
+        </div>
+      </label>
+
+      <label appLabeledField label="Min samples">
+        <div class="range-field">
+          <input
+            #ptMinSamples
+            class="field-input"
+            type="range"
+            min="1"
+            max="12"
+            step="1"
+            [value]="settings().pathTracingMinSamples"
+            (input)="updateRenderingNumber('pathTracingMinSamples', ptMinSamples.valueAsNumber)"
+          />
+          <span class="range-value">{{ settings().pathTracingMinSamples }}</span>
+        </div>
+      </label>
+
+      <label appLabeledField label="Render scale">
+        <div class="range-field">
+          <input
+            #ptRenderScale
+            class="field-input"
+            type="range"
+            min="0.25"
+            max="1"
+            step="0.05"
+            [value]="settings().pathTracingRenderScale"
+            (input)="updateRenderingNumber('pathTracingRenderScale', ptRenderScale.valueAsNumber)"
+          />
+          <span class="range-value">{{ settings().pathTracingRenderScale.toFixed(2) }}</span>
+        </div>
+      </label>
+
+      <label appLabeledField label="Tiles">
+        <div class="range-field">
+          <input
+            #ptTiles
+            class="field-input"
+            type="range"
+            min="1"
+            max="6"
+            step="1"
+            [value]="settings().pathTracingTiles"
+            (input)="updateRenderingNumber('pathTracingTiles', ptTiles.valueAsNumber)"
+          />
+          <span class="range-value">{{ settings().pathTracingTiles }}</span>
+        </div>
+      </label>
+
+      <label class="toggle-row">
+        <span>Dynamic low-res</span>
+        <input
+          #ptDynamicLowRes
+          type="checkbox"
+          [checked]="settings().pathTracingDynamicLowRes"
+          (change)="updateRenderingBoolean('pathTracingDynamicLowRes', ptDynamicLowRes.checked)"
+        />
+      </label>
+
+      <label appLabeledField label="Low-res scale">
+        <div class="range-field">
+          <input
+            #ptLowResScale
+            class="field-input"
+            type="range"
+            min="0.1"
+            max="1"
+            step="0.05"
+            [value]="settings().pathTracingLowResScale"
+            (input)="updateRenderingNumber('pathTracingLowResScale', ptLowResScale.valueAsNumber)"
+          />
+          <span class="range-value">{{ settings().pathTracingLowResScale.toFixed(2) }}</span>
+        </div>
+      </label>
+
+      <label appLabeledField label="Filter glossy">
+        <div class="range-field">
+          <input
+            #ptFilterGlossy
+            class="field-input"
+            type="range"
+            min="0"
+            max="1"
+            step="0.05"
+            [value]="settings().pathTracingFilterGlossyFactor"
+            (input)="updateRenderingNumber('pathTracingFilterGlossyFactor', ptFilterGlossy.valueAsNumber)"
+          />
+          <span class="range-value">{{ settings().pathTracingFilterGlossyFactor.toFixed(2) }}</span>
+        </div>
+      </label>
+
+      <label class="toggle-row">
+        <span>Denoiser</span>
+        <input
+          #ptDenoiser
+          type="checkbox"
+          [checked]="settings().pathTracingDenoiserEnabled"
+          (change)="updateRenderingBoolean('pathTracingDenoiserEnabled', ptDenoiser.checked)"
+        />
+      </label>
+
+      @if (settings().pathTracingDenoiserEnabled) {
+        <label appLabeledField label="Denoiser sigma">
+          <div class="range-field">
+            <input
+              #ptDenoiserSigma
+              class="field-input"
+              type="range"
+              min="0.5"
+              max="16"
+              step="0.5"
+              [value]="settings().pathTracingDenoiserSigma"
+              (input)="updateRenderingNumber('pathTracingDenoiserSigma', ptDenoiserSigma.valueAsNumber)"
+            />
+            <span class="range-value">{{ settings().pathTracingDenoiserSigma.toFixed(1) }}</span>
+          </div>
+        </label>
+
+        <label appLabeledField label="Denoiser threshold">
+          <div class="range-field">
+            <input
+              #ptDenoiserThreshold
+              class="field-input"
+              type="range"
+              min="0.001"
+              max="0.2"
+              step="0.001"
+              [value]="settings().pathTracingDenoiserThreshold"
+              (input)="updateRenderingNumber('pathTracingDenoiserThreshold', ptDenoiserThreshold.valueAsNumber)"
+            />
+            <span class="range-value">{{ settings().pathTracingDenoiserThreshold.toFixed(3) }}</span>
+          </div>
+        </label>
+      }
+    }
   </section>
 
-  <section class="group" aria-label="Texture settings">
-    <h4 class="group-title">Textures</h4>
+  @if (showRasterControls()) {
+    <section class="group" aria-label="Texture settings">
+      <h4 class="group-title">Textures</h4>
 
     <label appLabeledField label="Filtering">
       <select
@@ -350,7 +519,8 @@
         </div>
       </label>
     }
-  </section>
+    </section>
+  }
 
   <section class="group" aria-label="Scene behavior settings">
     <h4 class="group-title">Scene Behavior</h4>
@@ -407,14 +577,19 @@
       </div>
     </label>
 
-    <label class="toggle-row">
+    <label class="toggle-row" [class.disabled-row]="isPathTracingEnabled()">
       <span>GPU BVH</span>
       <input
         #bvhEnabled
         type="checkbox"
         [checked]="sceneSettings().bvhEnabled"
+        [disabled]="isPathTracingEnabled()"
         (change)="updateSceneBoolean('bvhEnabled', bvhEnabled.checked)"
       />
     </label>
+
+    @if (isPathTracingEnabled()) {
+      <p class="feature-note">GPU BVH is a raster raycast-acceleration toggle and is ignored in path tracing mode.</p>
+    }
   </section>
 </aside>

@@ -46,6 +46,16 @@ export interface RenderingSettings {
   globalIllumination: boolean;
   rayTracing: boolean;
   pathTracing: boolean;
+  pathTracingBounces: number;
+  pathTracingMinSamples: number;
+  pathTracingRenderScale: number;
+  pathTracingTiles: number;
+  pathTracingDynamicLowRes: boolean;
+  pathTracingLowResScale: number;
+  pathTracingFilterGlossyFactor: number;
+  pathTracingDenoiserEnabled: boolean;
+  pathTracingDenoiserSigma: number;
+  pathTracingDenoiserThreshold: number;
   anisotropy: number;
   textureFiltering: TextureFiltering;
   depthOfField: boolean;
@@ -123,6 +133,16 @@ export const defaultRenderingSettings: RenderingSettings = {
   globalIllumination: false,
   rayTracing: false,
   pathTracing: false,
+  pathTracingBounces: 6,
+  pathTracingMinSamples: 3,
+  pathTracingRenderScale: 1,
+  pathTracingTiles: 2,
+  pathTracingDynamicLowRes: false,
+  pathTracingLowResScale: 0.2,
+  pathTracingFilterGlossyFactor: 0.5,
+  pathTracingDenoiserEnabled: false,
+  pathTracingDenoiserSigma: 5,
+  pathTracingDenoiserThreshold: 0.03,
   anisotropy: 8,
   textureFiltering: 'trilinear',
   depthOfField: false,

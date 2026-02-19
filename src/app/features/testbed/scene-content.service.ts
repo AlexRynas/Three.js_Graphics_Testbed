@@ -28,8 +28,10 @@ type LoadCollectionParams = {
   scene: SceneInstance | null;
   threeModule: ThreeModule;
   rendererMode: RendererMode;
+  pathTracingEnabled: boolean;
   sceneSettings: SceneSettings;
   activeGroup: GroupInstance | null;
+  onTopologyChange?: () => void;
   applyEnvironment: (hdrTexture: TextureInstance | null, environmentUrl: string | null) => void;
 };
 
@@ -82,7 +84,8 @@ export class SceneContentService {
   }
 
   async loadCollection(params: LoadCollectionParams): Promise<LoadCollectionResult> {
-    const { collection, scene, threeModule, rendererMode, sceneSettings } = params;
+    const { collection, scene, threeModule, rendererMode, sceneSettings, pathTracingEnabled } =
+      params;
     const THREE = threeModule;
 
     const clearedGroup = this.clearActiveGroup(scene, params.activeGroup, threeModule);
@@ -108,6 +111,7 @@ export class SceneContentService {
         scene,
         threeModule,
         rendererMode,
+        pathTracingEnabled,
       );
       return {
         manifest,
@@ -132,7 +136,15 @@ export class SceneContentService {
     const group = new THREE.Group();
     scene.add(group);
 
-    await this.loadLod(manifest.lods, group, threeModule, sceneSettings, rendererMode);
+    await this.loadLod(
+      manifest.lods,
+      group,
+      threeModule,
+      sceneSettings,
+      rendererMode,
+      pathTracingEnabled,
+      params.onTopologyChange,
+    );
 
     const initialView = this.resolveInitialView(manifest);
 
@@ -168,17 +180,37 @@ export class SceneContentService {
     threeModule: ThreeModule,
     sceneSettings: SceneSettings,
     rendererMode: RendererMode,
+    pathTracingEnabled: boolean,
+    onTopologyChange?: () => void,
   ): Promise<void> {
     const THREE = threeModule;
     const lod = new THREE.LOD();
     group.add(lod);
 
-    await this.loadLodLevel(lods[0], lod, 0, threeModule, sceneSettings, rendererMode);
+    await this.loadLodLevel(
+      lods[0],
+      lod,
+      0,
+      threeModule,
+      sceneSettings,
+      rendererMode,
+      pathTracingEnabled,
+      onTopologyChange,
+    );
 
     const higher = lods.slice(1);
     higher.forEach((url, index) => {
       const distance = (index + 1) * 12 + sceneSettings.lodBias * 3;
-      void this.loadLodLevel(url, lod, distance, threeModule, sceneSettings, rendererMode);
+      void this.loadLodLevel(
+        url,
+        lod,
+        distance,
+        threeModule,
+        sceneSettings,
+        rendererMode,
+        pathTracingEnabled,
+        onTopologyChange,
+      );
     });
   }
 
@@ -189,6 +221,8 @@ export class SceneContentService {
     threeModule: ThreeModule,
     sceneSettings: SceneSettings,
     rendererMode: RendererMode,
+    pathTracingEnabled: boolean,
+    onTopologyChange?: () => void,
   ): Promise<void> {
     const THREE = threeModule;
     try {
@@ -211,6 +245,10 @@ export class SceneContentService {
       });
 
       floorMeshes.forEach((mesh) => {
+        if (pathTracingEnabled) {
+          return;
+        }
+
         if (rendererMode === 'webgl') {
           this.addWebglFloorReflector(mesh, THREE);
           return;
@@ -220,6 +258,7 @@ export class SceneContentService {
       });
 
       lod.addLevel(scene, distance);
+      onTopologyChange?.();
     } catch {}
   }
 
@@ -227,6 +266,7 @@ export class SceneContentService {
     scene: SceneInstance,
     threeModule: ThreeModule,
     rendererMode: RendererMode,
+    pathTracingEnabled: boolean,
   ): GroupInstance {
     const THREE = threeModule;
     const group = new THREE.Group();
@@ -270,7 +310,9 @@ export class SceneContentService {
     floor.receiveShadow = true;
     group.add(floor);
 
-    if (rendererMode === 'webgl') {
+    if (pathTracingEnabled) {
+      floor.visible = true;
+    } else if (rendererMode === 'webgl') {
       this.addWebglFloorReflector(floor, THREE);
     } else {
       this.applyWebgpuFloorReflector(floor, THREE);

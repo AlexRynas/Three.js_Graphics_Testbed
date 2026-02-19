@@ -24,6 +24,7 @@ import { RenderingSettingsService } from './rendering-settings.service';
 import { SceneContentService } from './scene-content.service';
 import { SceneOptimizationService } from './scene-optimization.service';
 import { StatsSample } from './metrics.model';
+import { GpuPathTracerRuntimeService } from './gpu-pathtracer-runtime.service';
 import {
   CameraInstance,
   ComposerBundle,
@@ -47,6 +48,7 @@ export class TestbedFacade {
   private readonly sceneContentService = inject(SceneContentService);
   private readonly sceneOptimizationService = inject(SceneOptimizationService);
   private readonly runtimeService = inject(TestbedRuntimeService);
+  private readonly pathTracerRuntimeService = inject(GpuPathTracerRuntimeService);
 
   private renderer: RendererInstance | null = null;
   private composerBundle: ComposerBundle;
@@ -65,6 +67,11 @@ export class TestbedFacade {
   private activeEnvironmentUrl: string | null = null;
   private environmentLoadToken = 0;
   private environmentEnabledApplied = defaultSceneSettings.environmentMapEnabled;
+  private previousAppliedRenderingSettings: RenderingSettings | null = null;
+  private previousAppliedSceneSettings: SceneSettings | null = null;
+  private pathTracerCameraRef: CameraInstance | null = null;
+  private forcePathTracerRebuild = false;
+  private pathTracingTopologySignature: string | null = null;
 
   private viewportShellRef: ViewportComponent | null = null;
 
@@ -353,6 +360,11 @@ export class TestbedFacade {
       this.composerBundle,
       this.currentMode,
     );
+
+    if (this.isPathTracingActive(this.settings(), this.currentMode)) {
+      this.pathTracerRuntimeService.updateCamera(this.camera);
+      this.pathTracerRuntimeService.reset();
+    }
   }
 
   private updateComposerSize(): void {
@@ -408,6 +420,19 @@ export class TestbedFacade {
       return;
     }
 
+    const pathTracingActive = this.isPathTracingActive(settings, resolvedMode);
+    if (!pathTracingActive) {
+      this.pathTracerRuntimeService.deactivate();
+      this.pathTracerCameraRef = null;
+      this.pathTracingTopologySignature = null;
+    }
+    this.lightingEffectsService.switchPathTracingEnvironment(
+      this.scene,
+      this.renderer,
+      this.activeThree,
+      pathTracingActive,
+    );
+
     this.updateToneMapping(sceneSettings);
     this.updateControls(sceneSettings);
     if (sceneSettings.environmentMapEnabled !== this.environmentEnabledApplied) {
@@ -419,11 +444,20 @@ export class TestbedFacade {
       this.activeThree,
       sceneSettings.environmentIntensity,
     );
-    this.sceneOptimizationService.updateLodBias(
-      this.scene,
-      this.activeThree,
-      sceneSettings.lodBias,
-    );
+    if (pathTracingActive) {
+      if (
+        this.previousAppliedSceneSettings &&
+        this.previousAppliedSceneSettings.lodBias !== sceneSettings.lodBias
+      ) {
+        this.forcePathTracerRebuild = true;
+      }
+    } else {
+      this.sceneOptimizationService.updateLodBias(
+        this.scene,
+        this.activeThree,
+        sceneSettings.lodBias,
+      );
+    }
     this.renderingSettingsService.applyPostProcessing(
       this.composerBundle,
       settings,
@@ -431,25 +465,38 @@ export class TestbedFacade {
       this.getViewportSize(),
       this.scene,
     );
-    const shadowResult = this.renderingSettingsService.applyShadowSettings(
-      this.renderer,
-      settings,
-      this.activeThree,
-      this.currentMode,
-      this.scene,
-    );
-    this.renderingSettingsService.applyTextureFiltering(
-      this.renderer,
-      this.scene,
-      this.activeThree,
-      settings,
-      this.capabilitySummary(),
-    );
-    if (
-      this.sceneOptimizationService.applyBvh(this.scene, this.activeThree, sceneSettings.bvhEnabled)
-    ) {
-      this.refreshInspector();
+    const shadowResult = pathTracingActive
+      ? null
+      : this.renderingSettingsService.applyShadowSettings(
+          this.renderer,
+          settings,
+          this.activeThree,
+          this.currentMode,
+          this.scene,
+        );
+    if (!pathTracingActive) {
+      this.renderingSettingsService.applyTextureFiltering(
+        this.renderer,
+        this.scene,
+        this.activeThree,
+        settings,
+        this.capabilitySummary(),
+      );
+      if (
+        this.sceneOptimizationService.applyBvh(
+          this.scene,
+          this.activeThree,
+          sceneSettings.bvhEnabled,
+        )
+      ) {
+        this.refreshInspector();
+      }
     }
+
+    if (pathTracingActive) {
+      this.applyPathTracingUpdates(settings, sceneSettings);
+    }
+
     const unsupported = this.renderingSettingsService.getUnsupportedLabel(
       settings,
       this.currentMode,
@@ -464,6 +511,9 @@ export class TestbedFacade {
     } else if (this.status().startsWith('Shadow type')) {
       this.status.set('Ready');
     }
+
+    this.previousAppliedRenderingSettings = { ...settings };
+    this.previousAppliedSceneSettings = { ...sceneSettings };
   }
 
   private needsMsaaRebuild(settings: RenderingSettings): boolean {
@@ -495,6 +545,9 @@ export class TestbedFacade {
 
     this.setThreeModule(mode);
     await this.createRenderer(canvas, mode);
+    this.pathTracerCameraRef = null;
+    this.forcePathTracerRebuild = true;
+    this.pathTracingTopologySignature = null;
     if (backendChanged) {
       this.initControls();
     }
@@ -558,6 +611,7 @@ export class TestbedFacade {
   ): void {
     this.activeEnvironmentUrl = environmentUrl;
     this.environmentEnabledApplied = this.sceneSettings().environmentMapEnabled;
+
     this.lightingEffectsService.applyEnvironment(
       this.scene,
       this.renderer,
@@ -566,6 +620,14 @@ export class TestbedFacade {
       hdrTexture,
       this.sceneSettings().environmentMapEnabled,
     );
+
+    this.lightingEffectsService.switchPathTracingEnvironment(
+      this.scene,
+      this.renderer,
+      this.activeThree,
+      this.isPathTracingActive(this.settings(), this.currentMode),
+    );
+
     this.sceneOptimizationService.applyEnvironmentIntensity(
       this.scene,
       this.activeThree,
@@ -575,13 +637,16 @@ export class TestbedFacade {
 
   private async loadCollection(collection: CollectionRef): Promise<void> {
     this.status.set(`Loading collection: ${collection.displayName}...`);
+    const pathTracingActive = this.isPathTracingActive(this.settings(), this.currentMode);
     const result = await this.sceneContentService.loadCollection({
       collection,
       scene: this.scene,
       threeModule: this.activeThree,
       rendererMode: this.currentMode,
+      pathTracingEnabled: pathTracingActive,
       sceneSettings: this.sceneSettings(),
       activeGroup: this.activeGroup,
+      onTopologyChange: () => this.handleSceneTopologyMutation(),
       applyEnvironment: (hdrTexture, environmentUrl) =>
         this.applyEnvironment(hdrTexture, environmentUrl),
     });
@@ -601,6 +666,8 @@ export class TestbedFacade {
       this.getViewportSize(),
       this.scene,
     );
+
+    this.handleSceneTopologyMutation();
     this.refreshInspector();
 
     if (result.procedural) {
@@ -641,12 +708,25 @@ export class TestbedFacade {
 
     const delta = this.clock?.getDelta() ?? 0;
     this.frameStats?.beginFrame();
-    this.controls?.update();
+    const controlsChanged = this.controls?.update() ?? false;
     if (this.benchmark().active) {
       this.updateBenchmarkPath(time);
     }
 
-    if (this.composerBundle.webgpu) {
+    if (this.isPathTracingActive(this.settings(), this.currentMode)) {
+      const topologySignature = this.buildPathTracingTopologySignature();
+      if (topologySignature !== this.pathTracingTopologySignature) {
+        this.pathTracingTopologySignature = topologySignature;
+        this.forcePathTracerRebuild = true;
+        this.applyPathTracingUpdates(this.settings(), this.sceneSettings());
+      }
+
+      if (controlsChanged || this.benchmark().active) {
+        this.pathTracerRuntimeService.updateCamera(this.camera);
+      }
+
+      this.pathTracerRuntimeService.render(this.settings());
+    } else if (this.composerBundle.webgpu) {
       this.composerBundle.webgpu.postProcessing.render();
     } else if (this.composerBundle.composer) {
       this.composerBundle.composer.render(delta);
@@ -712,6 +792,10 @@ export class TestbedFacade {
   }
 
   private disposeRenderer(): void {
+    this.pathTracerRuntimeService.dispose();
+    this.pathTracerCameraRef = null;
+    this.pathTracingTopologySignature = null;
+
     if (!this.renderer) {
       return;
     }
@@ -738,11 +822,163 @@ export class TestbedFacade {
     this.composerBundle = this.runtimeService.createEmptyComposerBundle();
     this.scene = null;
     this.camera = null;
+    this.pathTracerCameraRef = null;
+    this.forcePathTracerRebuild = false;
+    this.pathTracingTopologySignature = null;
+    this.previousAppliedRenderingSettings = null;
+    this.previousAppliedSceneSettings = null;
     this.sceneControlConstraints.set({});
     this.frameStats?.dispose();
     this.frameStats = null;
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
     this.viewportShellRef = null;
+  }
+
+  private applyPathTracingUpdates(settings: RenderingSettings, sceneSettings: SceneSettings): void {
+    if (!this.pathTracerRuntimeService.initialize(this.renderer)) {
+      return;
+    }
+
+    this.lightingEffectsService.switchPathTracingEnvironment(
+      this.scene,
+      this.renderer,
+      this.activeThree,
+      true,
+    );
+
+    const topologyChanged =
+      this.forcePathTracerRebuild ||
+      !this.pathTracerRuntimeService.hasScene() ||
+      this.pathTracerCameraRef !== this.camera ||
+      this.hasPathTracingTopologySettingChange(settings, sceneSettings);
+
+    if (topologyChanged) {
+      const rebuilt = this.pathTracerRuntimeService.setSceneWithPrep(this.scene, this.camera, settings);
+      if (rebuilt) {
+        this.forcePathTracerRebuild = false;
+        this.pathTracerCameraRef = this.camera;
+        this.pathTracingTopologySignature = this.buildPathTracingTopologySignature();
+      }
+      return;
+    }
+
+    if (this.hasPathTracingParameterChange(settings, sceneSettings)) {
+      this.pathTracerRuntimeService.updateCamera(this.camera);
+      this.pathTracerRuntimeService.updateMaterials();
+      this.pathTracerRuntimeService.updateLights();
+      this.pathTracerRuntimeService.updateEnvironment();
+      this.pathTracerRuntimeService.reset();
+    }
+  }
+
+  private handleSceneTopologyMutation(): void {
+    this.forcePathTracerRebuild = true;
+    if (!this.isPathTracingActive(this.settings(), this.currentMode)) {
+      return;
+    }
+
+    this.applyPathTracingUpdates(this.settings(), this.sceneSettings());
+  }
+
+  private isPathTracingActive(settings: RenderingSettings, mode: RendererMode): boolean {
+    return mode === 'webgl' && settings.pathTracing;
+  }
+
+  private hasPathTracingTopologySettingChange(
+    settings: RenderingSettings,
+    sceneSettings: SceneSettings,
+  ): boolean {
+    const previousRendering = this.previousAppliedRenderingSettings;
+    const previousScene = this.previousAppliedSceneSettings;
+    if (!previousRendering || !previousScene) {
+      return true;
+    }
+
+    return (
+      previousRendering.pathTracing !== settings.pathTracing ||
+      previousScene.lodBias !== sceneSettings.lodBias
+    );
+  }
+
+  private hasPathTracingParameterChange(
+    settings: RenderingSettings,
+    sceneSettings: SceneSettings,
+  ): boolean {
+    const previousRendering = this.previousAppliedRenderingSettings;
+    const previousScene = this.previousAppliedSceneSettings;
+    if (!previousRendering || !previousScene) {
+      return false;
+    }
+
+    const renderingKeys: Array<keyof RenderingSettings> = [
+      'pathTracingBounces',
+      'pathTracingMinSamples',
+      'pathTracingRenderScale',
+      'pathTracingTiles',
+      'pathTracingDynamicLowRes',
+      'pathTracingLowResScale',
+      'pathTracingFilterGlossyFactor',
+      'pathTracingDenoiserEnabled',
+      'pathTracingDenoiserSigma',
+      'pathTracingDenoiserThreshold',
+    ];
+    const sceneKeys: Array<keyof SceneSettings> = [
+      'environmentMapEnabled',
+      'environmentIntensity',
+      'toneMapping',
+      'exposure',
+    ];
+
+    return (
+      renderingKeys.some((key) => previousRendering[key] !== settings[key]) ||
+      sceneKeys.some((key) => previousScene[key] !== sceneSettings[key])
+    );
+  }
+
+  private buildPathTracingTopologySignature(): string {
+    if (!this.scene || !this.camera) {
+      return '';
+    }
+
+    const cameraId = 'uuid' in this.camera ? this.camera.uuid : 'camera';
+    const meshEntries: string[] = [];
+    const lightEntries: string[] = [];
+
+    this.scene.traverse((object) => {
+      if ('isMesh' in object && object.isMesh) {
+        if (!('geometry' in object) || !('material' in object)) {
+          return;
+        }
+
+        const mesh = object as unknown as {
+          uuid: string;
+          geometry: { uuid: string };
+          material: { uuid: string } | Array<{ uuid: string }>;
+          visible: boolean;
+        };
+
+        const materialIds = Array.isArray(mesh.material)
+          ? mesh.material.map((material) => material.uuid).join(',')
+          : mesh.material.uuid;
+        meshEntries.push(
+          `${mesh.uuid}|${mesh.geometry.uuid}|${materialIds}|${mesh.visible ? '1' : '0'}`,
+        );
+        return;
+      }
+
+      if ('isLight' in object && object.isLight) {
+        const light = object as {
+          uuid: string;
+          type: string;
+          visible: boolean;
+        };
+        lightEntries.push(`${light.uuid}|${light.type}|${light.visible ? '1' : '0'}`);
+      }
+    });
+
+    meshEntries.sort();
+    lightEntries.sort();
+    return `${cameraId}::${meshEntries.join(';')}::${lightEntries.join(';')}`;
   }
 }

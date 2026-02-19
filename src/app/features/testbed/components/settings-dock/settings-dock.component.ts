@@ -54,6 +54,12 @@ export class SettingsDockComponent {
   protected readonly textureModes: TextureFiltering[] = ['linear', 'trilinear', 'anisotropic'];
   protected readonly shadowTypes: ShadowType[] = ['basic', 'pcf', 'pcfSoft', 'vsm'];
   protected readonly toneMappingModes: Array<SceneSettings['toneMapping']> = ['none', 'linear', 'reinhard', 'cineon', 'aces', 'neutral'];
+  protected readonly isWebglMode = computed(() => this.settings().rendererMode === 'webgl');
+  protected readonly isPathTracingEnabled = computed(
+    () => this.isWebglMode() && this.settings().pathTracing,
+  );
+  protected readonly showRasterControls = computed(() => !this.isPathTracingEnabled());
+  protected readonly showPostProcessingControls = computed(() => !this.isPathTracingEnabled());
   protected readonly showSmaaQuality = computed(() => this.settings().antialiasing === 'smaa');
   protected readonly showTaaSamples = computed(() => this.settings().antialiasing === 'taa');
   protected readonly showGtaoChildren = computed(() => this.settings().gtaoEnabled);
@@ -124,7 +130,15 @@ export class SettingsDockComponent {
       | 'anisotropy'
       | 'dofFocus'
       | 'dofAperture'
-      | 'dofMaxBlur',
+      | 'dofMaxBlur'
+      | 'pathTracingBounces'
+      | 'pathTracingMinSamples'
+      | 'pathTracingRenderScale'
+      | 'pathTracingTiles'
+      | 'pathTracingLowResScale'
+      | 'pathTracingFilterGlossyFactor'
+      | 'pathTracingDenoiserSigma'
+      | 'pathTracingDenoiserThreshold',
     value: number,
   ): void {
     this.emitRendering(key, value);
@@ -142,7 +156,10 @@ export class SettingsDockComponent {
       | 'depthOfField'
       | 'vignette'
       | 'filmGrain'
-      | 'contactShadows',
+      | 'contactShadows'
+      | 'pathTracing'
+      | 'pathTracingDynamicLowRes'
+      | 'pathTracingDenoiserEnabled',
     checked: boolean,
   ): void {
     this.emitRendering(key, checked);

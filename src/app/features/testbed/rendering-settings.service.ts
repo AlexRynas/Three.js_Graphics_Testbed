@@ -94,6 +94,46 @@ export class RenderingSettingsService {
     viewportSize: { width: number; height: number },
     scene: SceneInstance | null,
   ): void {
+    const pathTracingEnabled = rendererMode === 'webgl' && settings.pathTracing;
+
+    if (pathTracingEnabled) {
+      if (passes.ssrPass) {
+        passes.ssrPass.enabled = false;
+      }
+      if (passes.fxaaPass) {
+        passes.fxaaPass.enabled = false;
+      }
+      if (passes.smaaPass) {
+        passes.smaaPass.enabled = false;
+      }
+      if (passes.taaPass) {
+        passes.taaPass.enabled = false;
+      }
+      if (passes.gtaoPass) {
+        passes.gtaoPass.enabled = false;
+      }
+      if (passes.dofPass) {
+        passes.dofPass.enabled = false;
+      }
+      if (passes.filmPass) {
+        passes.filmPass.enabled = false;
+      }
+      if (passes.vignettePass) {
+        passes.vignettePass.enabled = false;
+      }
+
+      this.syncWebglFloorReflectorVisibility(scene, false);
+      this.syncWebgpuFloorReflectorVisibility(scene, false);
+
+      if (passes.webgpu) {
+        const outputNode = passes.webgpu.scenePass.getTextureNode('output');
+        passes.webgpu.postProcessing.outputNode = outputNode;
+        passes.webgpu.postProcessing.needsUpdate = true;
+      }
+
+      return;
+    }
+
     const support = this.getAvailability(rendererMode, settings);
 
     if (passes.webgpu) {
@@ -424,8 +464,6 @@ export class RenderingSettingsService {
       unsupported.push('Global Illumination');
     }
     if (settings.rayTracing) unsupported.push('Ray Tracing');
-    if (settings.pathTracing) unsupported.push('Path Tracing');
-
     if (unsupported.length === 0) {
       return null;
     }
@@ -439,33 +477,49 @@ export class RenderingSettingsService {
 
   getAvailability(rendererMode: RendererMode, settings?: RenderingSettings): RenderingSupport {
     const isWebGpu = rendererMode === 'webgpu';
+    const pathTracingEnabled = rendererMode === 'webgl' && Boolean(settings?.pathTracing);
     const ssrConflictReason = settings ? this.getSsrConflictReason(settings) : null;
-    const ssrEnabled = !ssrConflictReason;
+    const ssrEnabled = !ssrConflictReason && !pathTracingEnabled;
 
     return {
       antialiasingModes: {
         none: true,
-        msaa: !isWebGpu,
-        fxaa: true,
-        smaa: true,
-        taa: true,
+        msaa: !isWebGpu && !pathTracingEnabled,
+        fxaa: !pathTracingEnabled,
+        smaa: !pathTracingEnabled,
+        taa: !pathTracingEnabled,
       },
       controls: {
-        smaaQuality: true,
-        taaSamples: true,
-        gtaoEnabled: true,
+        smaaQuality: !pathTracingEnabled,
+        taaSamples: !pathTracingEnabled,
+        gtaoEnabled: !pathTracingEnabled,
         ssrEnabled,
-        globalIllumination: isWebGpu,
-        gtaoRadius: true,
-        gtaoQuality: true,
-        depthOfField: true,
-        dofFocus: true,
-        dofAperture: true,
-        dofMaxBlur: true,
-        vignette: !isWebGpu,
-        filmGrain: true,
+        globalIllumination: isWebGpu && !pathTracingEnabled,
+        gtaoRadius: !pathTracingEnabled,
+        gtaoQuality: !pathTracingEnabled,
+        depthOfField: !pathTracingEnabled,
+        dofFocus: !pathTracingEnabled,
+        dofAperture: !pathTracingEnabled,
+        dofMaxBlur: !pathTracingEnabled,
+        vignette: !isWebGpu && !pathTracingEnabled,
+        filmGrain: !pathTracingEnabled,
       },
       controlHints: {
+        ...(pathTracingEnabled
+          ? {
+              smaaQuality: 'Disabled while GPU path tracing is enabled.',
+              taaSamples: 'Disabled while GPU path tracing is enabled.',
+              gtaoEnabled: 'Disabled while GPU path tracing is enabled.',
+              gtaoRadius: 'Disabled while GPU path tracing is enabled.',
+              gtaoQuality: 'Disabled while GPU path tracing is enabled.',
+              depthOfField: 'Disabled while GPU path tracing is enabled.',
+              dofFocus: 'Disabled while GPU path tracing is enabled.',
+              dofAperture: 'Disabled while GPU path tracing is enabled.',
+              dofMaxBlur: 'Disabled while GPU path tracing is enabled.',
+              vignette: 'Disabled while GPU path tracing is enabled.',
+              filmGrain: 'Disabled while GPU path tracing is enabled.',
+            }
+          : {}),
         ...(ssrConflictReason
           ? {
               ssrEnabled: `Disabled while ${ssrConflictReason}.`,
