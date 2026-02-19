@@ -51,7 +51,6 @@ export interface RenderingSettings {
   dofFocus: number;
   dofAperture: number;
   dofMaxBlur: number;
-  volumetricLighting: boolean;
   contactShadows: boolean;
   shadowType: ShadowType;
   vignette: boolean;
@@ -129,7 +128,6 @@ export const defaultRenderingSettings: RenderingSettings = {
   dofFocus: 5,
   dofAperture: 0.018,
   dofMaxBlur: 0.01,
-  volumetricLighting: false,
   contactShadows: true,
   shadowType: 'pcf',
   vignette: true,

@@ -382,7 +382,6 @@ export class RenderingSettingsService {
     if (settings.globalIllumination) unsupported.push('Global Illumination');
     if (settings.rayTracing) unsupported.push('Ray Tracing');
     if (settings.pathTracing) unsupported.push('Path Tracing');
-    if (settings.volumetricLighting) unsupported.push('Volumetric Lighting');
 
     if (unsupported.length === 0) {
       return null;
