@@ -301,6 +301,20 @@
     </label>
   </section>
 
+  <section class="group" aria-label="Ray/Path tracing settings">
+    <h4 class="group-title">Ray/Path tracing</h4>
+
+    <label class="toggle-row disabled-row">
+      <span>Ray tracing</span>
+      <input type="checkbox" [checked]="settings().rayTracing" disabled />
+    </label>
+
+    <label class="toggle-row disabled-row">
+      <span>Path tracing</span>
+      <input type="checkbox" [checked]="settings().pathTracing" disabled />
+    </label>
+  </section>
+
   <section class="group" aria-label="Texture settings">
     <h4 class="group-title">Textures</h4>
 
@@ -401,21 +415,5 @@
         (change)="updateSceneBoolean('bvhEnabled', bvhEnabled.checked)"
       />
     </label>
-  </section>
-
-  <section class="group" aria-label="Experimental rendering settings">
-    <h4 class="group-title">Experimental</h4>
-
-    <label class="toggle-row disabled-row">
-      <span>Ray tracing</span>
-      <input type="checkbox" [checked]="settings().rayTracing" disabled />
-    </label>
-
-    <label class="toggle-row disabled-row">
-      <span>Path tracing</span>
-      <input type="checkbox" [checked]="settings().pathTracing" disabled />
-    </label>
-
-    <p class="feature-note">Unavailable extras are shown for parity and remain disabled.</p>
   </section>
 </aside>
