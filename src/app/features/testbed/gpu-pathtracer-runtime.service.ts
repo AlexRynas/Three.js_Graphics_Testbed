@@ -39,10 +39,6 @@ export class GpuPathTracerRuntimeService {
     this.pathTracer.rasterizeScene = true;
     this.pathTracer.renderToCanvas = true;
     this.pathTracer.synchronizeRenderSize = true;
-    const pathTracerWithStableNoise = this.pathTracer as WebGLPathTracer & {
-      stableNoise?: boolean;
-    };
-    pathTracerWithStableNoise.stableNoise = true;
     this.pathTracer.renderDelay = 0;
     this.pathTracer.fadeDuration = 0;
 
