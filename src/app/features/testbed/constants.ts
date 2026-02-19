@@ -3,3 +3,4 @@ export const SSR_WEBGL_SOURCE_FLOOR_TAG = '__ssrSourceFloorMesh';
 export const SSR_EXCLUDE_TAG = '__ssrExclude';
 export const SSR_WEBGPU_REFLECTOR_NODE = '__ssrReflectorNode';
 export const SSR_WEBGPU_BASE_COLOR_NODE = '__ssrBaseColorNode';
+export const DEFAULT_ENVIRONMENT_MAP_URL = '/monochrome_studio_03_1k.hdr';

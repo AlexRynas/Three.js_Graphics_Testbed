@@ -61,9 +61,30 @@ export class AssetService {
   }
 
   async loadHdr(url: string): Promise<unknown> {
-    const module = await import('three/examples/jsm/loaders/RGBELoader.js');
-    const { RGBELoader } = module;
-    const loader = new RGBELoader();
+    const extension = this.resolveEnvironmentExtension(url);
+
+    if (!extension) {
+      throw new Error(`Unsupported environment map format: ${url}`);
+    }
+
+    if (extension === 'hdr') {
+      const module = await import('three/examples/jsm/loaders/HDRLoader.js');
+      const { HDRLoader } = module;
+      const loader = new HDRLoader();
+
+      return new Promise((resolve, reject) => {
+        loader.load(
+          url,
+          (texture: unknown) => resolve(texture),
+          undefined,
+          (error: unknown) => reject(error)
+        );
+      });
+    }
+
+    const module = await import('three/examples/jsm/loaders/EXRLoader.js');
+    const { EXRLoader } = module;
+    const loader = new EXRLoader();
 
     return new Promise((resolve, reject) => {
       loader.load(
@@ -73,6 +94,20 @@ export class AssetService {
         (error: unknown) => reject(error)
       );
     });
+  }
+
+  private resolveEnvironmentExtension(url: string): 'hdr' | 'exr' | null {
+    const normalized = url.split('#')[0]?.split('?')[0]?.toLowerCase() ?? '';
+
+    if (normalized.endsWith('.hdr')) {
+      return 'hdr';
+    }
+
+    if (normalized.endsWith('.exr')) {
+      return 'exr';
+    }
+
+    return null;
   }
 
   buildDefaultPresets(): Preset[] {

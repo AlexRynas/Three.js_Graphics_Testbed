@@ -1,5 +1,6 @@
 import { Injectable } from '@angular/core';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { WebGLRenderer } from 'three';
+import { BlurredEnvMapGenerator } from 'three-gpu-pathtracer';
 
 import { RendererMode } from './controls.model';
 import { RendererInstance } from './frame-stats-tracker';
@@ -7,6 +8,8 @@ import { SceneInstance, TextureInstance, ThreeModule } from './testbed-runtime.s
 
 const PT_SOURCE_ENV_TAG = '__ptSourceEnvironment';
 const PT_ENV_MODE_TAG = '__ptEnvironmentMode';
+const PT_BLURRED_ENV_TAG = '__ptBlurredEnvironment';
+const PT_ENVIRONMENT_BLUR = 0.35;
 
 @Injectable({ providedIn: 'root' })
 export class LightingEffectsService {
@@ -19,7 +22,7 @@ export class LightingEffectsService {
     enabled: boolean,
   ): void {
     const THREE = threeModule;
-    if (!scene || !renderer) {
+    if (!scene) {
       hdrTexture?.dispose();
       return;
     }
@@ -35,36 +38,32 @@ export class LightingEffectsService {
       return;
     }
 
-    const pmremGenerator = new THREE.PMREMGenerator(renderer as never);
-    pmremGenerator.compileEquirectangularShader();
-
     const previousSource = scene.userData[PT_SOURCE_ENV_TAG] as TextureInstance | null | undefined;
     if (previousSource && previousSource !== hdrTexture) {
       previousSource.dispose();
       scene.userData[PT_SOURCE_ENV_TAG] = null;
     }
 
+    const previousBlurred = scene.userData[PT_BLURRED_ENV_TAG] as TextureInstance | null | undefined;
+    if (previousBlurred) {
+      previousBlurred.dispose();
+      scene.userData[PT_BLURRED_ENV_TAG] = null;
+    }
+
     const previousEnvironment = scene.environment;
     if (hdrTexture) {
-      const sourceTexture = hdrTexture.clone() as TextureInstance;
-      sourceTexture.mapping = THREE.EquirectangularReflectionMapping;
-      sourceTexture.needsUpdate = true;
-      scene.userData[PT_SOURCE_ENV_TAG] = sourceTexture;
-
-      const envMap = pmremGenerator.fromEquirectangular(hdrTexture).texture;
-      scene.environment = envMap;
-      hdrTexture.dispose();
+      hdrTexture.mapping = THREE.EquirectangularReflectionMapping;
+      hdrTexture.needsUpdate = true;
+      scene.userData[PT_SOURCE_ENV_TAG] = hdrTexture;
+      scene.environment = hdrTexture;
     } else {
       scene.userData[PT_SOURCE_ENV_TAG] = null;
-      const envMap = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
-      scene.environment = envMap;
+      scene.environment = null;
     }
 
     if (previousEnvironment && previousEnvironment !== scene.environment) {
       previousEnvironment.dispose();
     }
-
-    pmremGenerator.dispose();
 
     scene.userData[PT_ENV_MODE_TAG] = false;
   }
@@ -76,7 +75,7 @@ export class LightingEffectsService {
     pathTracingEnabled: boolean,
   ): void {
     const THREE = threeModule;
-    if (!scene || !renderer) {
+    if (!scene) {
       return;
     }
 
@@ -86,37 +85,54 @@ export class LightingEffectsService {
     }
 
     const sourceEnvironment = scene.userData[PT_SOURCE_ENV_TAG] as TextureInstance | null | undefined;
+    const previousBlurred = scene.userData[PT_BLURRED_ENV_TAG] as TextureInstance | null | undefined;
     const previousEnvironment = scene.environment;
 
     if (pathTracingEnabled) {
-      if (previousEnvironment && previousEnvironment !== sourceEnvironment) {
-        previousEnvironment.dispose();
+      if (previousBlurred) {
+        previousBlurred.dispose();
+        scene.userData[PT_BLURRED_ENV_TAG] = null;
       }
 
-      if (sourceEnvironment) {
-        sourceEnvironment.mapping = THREE.EquirectangularReflectionMapping;
-        sourceEnvironment.needsUpdate = true;
-        scene.environment = sourceEnvironment;
-      } else {
+      if (!renderer || !sourceEnvironment || !this.isWebGlRenderer(renderer)) {
         scene.environment = null;
+        if (previousEnvironment && previousEnvironment !== sourceEnvironment) {
+          previousEnvironment.dispose();
+        }
+        scene.userData[PT_ENV_MODE_TAG] = true;
+        return;
+      }
+
+      sourceEnvironment.mapping = THREE.EquirectangularReflectionMapping;
+      sourceEnvironment.needsUpdate = true;
+
+      const generator = new BlurredEnvMapGenerator(renderer);
+      const blurredEnvironment = generator.generate(sourceEnvironment, PT_ENVIRONMENT_BLUR) as TextureInstance;
+      generator.dispose();
+
+      scene.userData[PT_BLURRED_ENV_TAG] = blurredEnvironment;
+      scene.environment = blurredEnvironment;
+
+      if (previousEnvironment && previousEnvironment !== sourceEnvironment) {
+        previousEnvironment.dispose();
       }
 
       scene.userData[PT_ENV_MODE_TAG] = true;
       return;
     }
 
-    const pmremGenerator = new THREE.PMREMGenerator(renderer as never);
-    pmremGenerator.compileEquirectangularShader();
-
-    if (sourceEnvironment) {
-      const envMap = pmremGenerator.fromEquirectangular(sourceEnvironment).texture;
-      scene.environment = envMap;
-    } else {
-      const envMap = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
-      scene.environment = envMap;
+    if (previousBlurred) {
+      previousBlurred.dispose();
+      scene.userData[PT_BLURRED_ENV_TAG] = null;
     }
 
-    pmremGenerator.dispose();
+    if (sourceEnvironment) {
+      sourceEnvironment.mapping = THREE.EquirectangularReflectionMapping;
+      sourceEnvironment.needsUpdate = true;
+      scene.environment = sourceEnvironment;
+    } else {
+      scene.environment = null;
+    }
 
     if (previousEnvironment && previousEnvironment !== sourceEnvironment) {
       previousEnvironment.dispose();
@@ -131,6 +147,13 @@ export class LightingEffectsService {
       sourceEnvironment.dispose();
       scene.userData[PT_SOURCE_ENV_TAG] = null;
     }
+
+    const blurredEnvironment = scene.userData[PT_BLURRED_ENV_TAG] as TextureInstance | null | undefined;
+    if (blurredEnvironment) {
+      blurredEnvironment.dispose();
+      scene.userData[PT_BLURRED_ENV_TAG] = null;
+    }
+
     scene.userData[PT_ENV_MODE_TAG] = false;
 
     const environment = scene.environment;
@@ -138,5 +161,9 @@ export class LightingEffectsService {
       environment.dispose();
       scene.environment = null;
     }
+  }
+
+  private isWebGlRenderer(renderer: RendererInstance): renderer is WebGLRenderer {
+    return Boolean((renderer as { isWebGLRenderer?: boolean }).isWebGLRenderer);
   }
 }

@@ -17,6 +17,7 @@ import {
   ThreeModule,
 } from './testbed-runtime.service';
 import {
+  DEFAULT_ENVIRONMENT_MAP_URL,
   SSR_WEBGPU_BASE_COLOR_NODE,
   SSR_WEBGL_FLOOR_TAG,
   SSR_WEBGL_SOURCE_FLOOR_TAG,
@@ -106,7 +107,7 @@ export class SceneContentService {
     }
 
     if (!manifest || !manifest.lods || manifest.lods.length === 0) {
-      params.applyEnvironment(null, null);
+      await this.loadAndApplyEnvironment(DEFAULT_ENVIRONMENT_MAP_URL, params.applyEnvironment);
       const proceduralGroup = this.buildProceduralScene(
         scene,
         threeModule,
@@ -122,16 +123,8 @@ export class SceneContentService {
       };
     }
 
-    if (manifest.environment) {
-      try {
-        const hdr = await this.assetService.loadHdr(manifest.environment);
-        params.applyEnvironment(hdr as TextureInstance, manifest.environment);
-      } catch {
-        params.applyEnvironment(null, manifest.environment);
-      }
-    } else {
-      params.applyEnvironment(null, null);
-    }
+    const environmentUrl = manifest.environment || DEFAULT_ENVIRONMENT_MAP_URL;
+    await this.loadAndApplyEnvironment(environmentUrl, params.applyEnvironment);
 
     const group = new THREE.Group();
     scene.add(group);
@@ -155,6 +148,18 @@ export class SceneContentService {
       initialCameraPosition: initialView.initialCameraPosition,
       initialControlTarget: initialView.initialControlTarget,
     };
+  }
+
+  private async loadAndApplyEnvironment(
+    environmentUrl: string,
+    applyEnvironment: (hdrTexture: TextureInstance | null, environmentUrl: string | null) => void,
+  ): Promise<void> {
+    try {
+      const hdr = await this.assetService.loadHdr(environmentUrl);
+      applyEnvironment(hdr as TextureInstance, environmentUrl);
+    } catch {
+      applyEnvironment(null, environmentUrl);
+    }
   }
 
   private resolveInitialView(manifest: CollectionManifest | null): {
