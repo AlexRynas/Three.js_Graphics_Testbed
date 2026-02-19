@@ -36,11 +36,15 @@ export class GpuPathTracerRuntimeService {
 
     this.renderer = renderer;
     this.pathTracer = new WebGLPathTracer(renderer);
+    this.pathTracer.multipleImportanceSampling = true;
     this.pathTracer.rasterizeScene = true;
     this.pathTracer.renderToCanvas = true;
     this.pathTracer.synchronizeRenderSize = true;
     this.pathTracer.renderDelay = 0;
     this.pathTracer.fadeDuration = 0;
+    this.pathTracer.transmissiveBounces = 10;
+    this.pathTracer.renderDelay = 100;
+    this.pathTracer.fadeDuration = 500;
 
     this.denoiseMaterial = new DenoiseMaterial();
     this.denoiseQuad = new FullScreenQuad(this.denoiseMaterial);

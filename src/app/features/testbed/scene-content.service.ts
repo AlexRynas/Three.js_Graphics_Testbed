@@ -368,7 +368,13 @@ export class SceneContentService {
 
     // Main light mesh (to visualize the light source)
     const pointLightMeshGeometry = new THREE.CylinderGeometry(2.5, 2.5, 1, 64);
-    const pointLightMeshMaterial = new THREE.MeshBasicMaterial();
+    const pointLightMeshMaterial = new THREE.MeshStandardMaterial({
+      color: '#000000',
+      emissive: '#ffffff',
+      emissiveIntensity: 1,
+      roughness: 1,
+      metalness: 0,
+    });
     const pointLightMesh = new THREE.Mesh(pointLightMeshGeometry, pointLightMeshMaterial);
     pointLightMesh.name = 'Main Light Source Mesh';
     pointLightMesh.position.y = 15;
