@@ -23,7 +23,8 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.2.0'
+SCRIPT_VERSION = '0.3.0'
+SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
     'CollectionControlTarget',
@@ -158,14 +159,15 @@ class ReportSnapshot:
 
 
 class ExportReport:
-    def __init__(self, log_path: Path | None = None) -> None:
+    def __init__(self, log_path: Path | None = None, reset_log: bool = False) -> None:
         self.messages: list[str] = []
         self.warnings: list[str] = []
         self.errors: list[str] = []
         self.log_path = log_path
         if self.log_path is not None:
             ensure_directory(self.log_path.parent)
-            self.log_path.write_text('', encoding='utf-8')
+            if reset_log or not self.log_path.exists():
+                self.log_path.write_text('', encoding='utf-8')
 
     def _emit(self, message: str) -> None:
         if self.log_path is not None:
@@ -210,15 +212,43 @@ def build_export_config(**overrides: object) -> ExportConfig:
     return ExportConfig(**config_values)
 
 
-def resolve_log_path(config: ExportConfig) -> Path | None:
-    if config.log_path_override:
-        return Path(config.log_path_override).expanduser().resolve()
-
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+def resolve_default_session_log_path() -> Path:
     if bpy.data.filepath:
         blend_path = Path(bpy.data.filepath).resolve()
-        return (blend_path.parent / 'export-logs' / f'{blend_path.stem}_prepare_testbed_collection_{timestamp}.log').resolve()
-    return (Path(tempfile.gettempdir()) / 'threejs_testbed_export_logs' / f'unsaved_prepare_testbed_collection_{timestamp}.log').resolve()
+        return (blend_path.parent / 'export-logs' / f'{blend_path.stem}{SESSION_LOG_FILENAME_SUFFIX}').resolve()
+    return (Path(tempfile.gettempdir()) / 'threejs_testbed_export_logs' / f'unsaved{SESSION_LOG_FILENAME_SUFFIX}').resolve()
+
+
+def get_export_runtime_namespace() -> SimpleNamespace:
+    namespace = getattr(builtins, 'testbed_export', None)
+    if namespace is None:
+        namespace = register_console_helpers()
+    return namespace
+
+
+def resolve_log_destination(config: ExportConfig) -> tuple[Path | None, bool]:
+    if config.log_path_override:
+        return Path(config.log_path_override).expanduser().resolve(), False
+
+    namespace = get_export_runtime_namespace()
+    session_log_path = getattr(namespace, 'session_log_path', None)
+    if session_log_path is None:
+        session_log_path = resolve_default_session_log_path()
+        namespace.session_log_path = session_log_path
+        return session_log_path, True
+    return session_log_path, False
+
+
+def write_run_separator(report: ExportReport, requested_stages: tuple[str, ...]) -> None:
+    if report.log_path is None:
+        return
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    report._emit('')
+    report._emit('=' * 72)
+    report._emit(
+        f'Run started: {timestamp} | stages: {", ".join(requested_stages)} | script v{SCRIPT_VERSION}'
+    )
+    report._emit('=' * 72)
 
 
 def resolve_requested_stages(config: ExportConfig) -> tuple[str, ...]:
@@ -1405,9 +1435,19 @@ def print_console_summary(paths: ExportPaths, index_snippet: str, report: Export
     report.summary('See the detailed log for the index snippet, KTX2 command examples, and full warnings.')
 
 
+def update_export_runtime_log_state(log_path: Path | None) -> None:
+    if log_path is None:
+        return
+    namespace = get_export_runtime_namespace()
+    namespace.session_log_path = log_path
+
+
 def execute_export(config: ExportConfig) -> dict[str, object]:
     requested_stages = resolve_requested_stages(config)
-    report = ExportReport(log_path=resolve_log_path(config))
+    log_path, reset_log = resolve_log_destination(config)
+    report = ExportReport(log_path=log_path, reset_log=reset_log)
+    update_export_runtime_log_state(log_path)
+    write_run_separator(report, requested_stages)
     report.summary(f'Starting Three.js Graphics Testbed collection export script v{SCRIPT_VERSION}.')
     report.summary(f'Executing stages: {", ".join(requested_stages)}')
     if report.log_path is not None:
@@ -1651,6 +1691,7 @@ def print_console_usage() -> None:
     print("  run_testbed_export_stages('export-high', 'export-medium', 'export-low')")
     print("  run_testbed_export_stage('package')")
     print('These helpers store the last result at testbed_export.last_result and do not echo it unless echo_result=True is passed.')
+    print('By default, all commands append to a single session log file until you provide log_path_override.')
     print('Optional keyword arguments:')
     print('  collection_name_override, display_name_override, export_root_override,')
     print('  high_texture_size, medium_texture_size, low_texture_size,')
@@ -1667,6 +1708,7 @@ def register_console_helpers() -> SimpleNamespace:
         get_last_result=get_last_export_result,
         build_config=build_export_config,
         default_config=DEFAULT_CONFIG,
+        session_log_path=None,
         last_result=None,
     )
 
