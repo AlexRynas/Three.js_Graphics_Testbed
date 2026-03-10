@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-import argparse
+import builtins
+from datetime import datetime
 import importlib.util
 import json
 import re
 import shutil
-import sys
 import tempfile
 import traceback
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 
 try:
     import bpy
@@ -22,7 +23,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.1.0'
+SCRIPT_VERSION = '0.2.0'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
     'CollectionControlTarget',
@@ -37,6 +38,24 @@ IMAGE_NAME_HINTS = {
     'normal': ('normal', 'norm'),
     'orm': ('orm', 'occlusionroughnessmetallic', 'rma'),
     'roughness': ('roughness', 'rough'),
+}
+STAGE_ORDER = (
+    'inspect',
+    'analyze',
+    'bake',
+    'export-high',
+    'export-medium',
+    'export-low',
+    'package',
+)
+STAGE_DESCRIPTIONS = {
+    'inspect': 'Resolve the source collection, validate scene prerequisites, create the output layout, and derive initial camera metadata.',
+    'analyze': 'Inspect mesh LOD bundles, analyze materials and textures, and detect Auto Bake 2 availability without exporting assets.',
+    'bake': 'Run only the bake preparation or Auto Bake 2 verification path so bake warnings can be reviewed separately.',
+    'export-high': 'Export only the high-detail GLB package using LOD0 or the best available source mesh.',
+    'export-medium': 'Export only the medium-detail GLB package using LOD1 or a generated decimated mesh.',
+    'export-low': 'Export only the low-detail GLB package using LOD2 or a generated decimated mesh.',
+    'package': 'Render the thumbnail, copy the HDR environment, write manifest/report files, and print the index snippet.',
 }
 
 
@@ -54,6 +73,8 @@ class ExportConfig:
     bake_behavior: str = 'auto'
     write_report: bool = True
     verify_autobake_adapter: bool = False
+    log_path_override: str | None = None
+    stages: tuple[str, ...] = ('all',)
 
 
 DEFAULT_CONFIG = ExportConfig()
@@ -129,67 +150,151 @@ class AutoBakeStatus:
     used: bool = False
 
 
+@dataclass(slots=True)
+class ReportSnapshot:
+    message_count: int
+    warning_count: int
+    error_count: int
+
+
 class ExportReport:
-    def __init__(self) -> None:
+    def __init__(self, log_path: Path | None = None) -> None:
         self.messages: list[str] = []
         self.warnings: list[str] = []
         self.errors: list[str] = []
+        self.log_path = log_path
+        if self.log_path is not None:
+            ensure_directory(self.log_path.parent)
+            self.log_path.write_text('', encoding='utf-8')
+
+    def _emit(self, message: str) -> None:
+        if self.log_path is not None:
+            with self.log_path.open('a', encoding='utf-8') as handle:
+                handle.write(message)
+                handle.write('\n')
+
+    def summary(self, message: str) -> None:
+        print(message)
+        self._emit(message)
+
+    def log_traceback(self) -> None:
+        traceback_text = traceback.format_exc().rstrip()
+        if traceback_text:
+            self._emit(traceback_text)
 
     def info(self, message: str) -> None:
         self.messages.append(message)
-        print(message)
+        self._emit(message)
 
     def warn(self, message: str) -> None:
         self.warnings.append(message)
-        print(f'WARNING: {message}')
+        self._emit(f'WARNING: {message}')
 
     def error(self, message: str) -> None:
         self.errors.append(message)
-        print(f'ERROR: {message}')
+        self._emit(f'ERROR: {message}')
 
 
-def parse_args() -> ExportConfig:
-    parser = argparse.ArgumentParser(
-        description='Prepare and export a Three.js Graphics Testbed collection package from Blender.'
+def print_stage_catalog() -> None:
+    print('Available execution stages:')
+    for stage_name in STAGE_ORDER:
+        print(f'- {stage_name}: {STAGE_DESCRIPTIONS[stage_name]}')
+
+
+def build_export_config(**overrides: object) -> ExportConfig:
+    config_values = asdict(DEFAULT_CONFIG)
+    for key, value in overrides.items():
+        if key not in config_values:
+            raise TypeError(f'Unknown export config option: {key}')
+        config_values[key] = value
+    return ExportConfig(**config_values)
+
+
+def resolve_log_path(config: ExportConfig) -> Path | None:
+    if config.log_path_override:
+        return Path(config.log_path_override).expanduser().resolve()
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    if bpy.data.filepath:
+        blend_path = Path(bpy.data.filepath).resolve()
+        return (blend_path.parent / 'export-logs' / f'{blend_path.stem}_prepare_testbed_collection_{timestamp}.log').resolve()
+    return (Path(tempfile.gettempdir()) / 'threejs_testbed_export_logs' / f'unsaved_prepare_testbed_collection_{timestamp}.log').resolve()
+
+
+def resolve_requested_stages(config: ExportConfig) -> tuple[str, ...]:
+    if 'all' in config.stages:
+        return STAGE_ORDER
+
+    deduplicated: list[str] = []
+    for stage_name in config.stages:
+        if stage_name not in STAGE_ORDER:
+            raise ValueError(f'Unknown stage: {stage_name}')
+        if stage_name not in deduplicated:
+            deduplicated.append(stage_name)
+    return tuple(deduplicated)
+
+
+def take_report_snapshot(report: ExportReport) -> ReportSnapshot:
+    return ReportSnapshot(
+        message_count=len(report.messages),
+        warning_count=len(report.warnings),
+        error_count=len(report.errors),
     )
-    parser.add_argument('--collection-name', dest='collection_name_override')
-    parser.add_argument('--display-name', dest='display_name_override')
-    parser.add_argument('--export-root', dest='export_root_override')
-    parser.add_argument('--high-texture-size', type=int, default=DEFAULT_CONFIG.high_texture_size)
-    parser.add_argument('--medium-texture-size', type=int, default=DEFAULT_CONFIG.medium_texture_size)
-    parser.add_argument('--low-texture-size', type=int, default=DEFAULT_CONFIG.low_texture_size)
-    parser.add_argument('--medium-decimate-ratio', type=float, default=DEFAULT_CONFIG.medium_decimate_ratio)
-    parser.add_argument('--low-decimate-ratio', type=float, default=DEFAULT_CONFIG.low_decimate_ratio)
-    parser.add_argument('--thumbnail-size', type=int, default=DEFAULT_CONFIG.thumbnail_size)
-    parser.add_argument(
-        '--bake-behavior',
-        choices=('auto', 'autobake', 'manual', 'off'),
-        default=DEFAULT_CONFIG.bake_behavior,
-    )
-    parser.add_argument('--no-report', action='store_true')
-    parser.add_argument('--verify-autobake-adapter', action='store_true')
 
-    argv = sys.argv
-    if '--' in argv:
-        argv = argv[argv.index('--') + 1 :]
-    else:
-        argv = []
 
-    args = parser.parse_args(argv)
-    return ExportConfig(
-        collection_name_override=args.collection_name_override,
-        display_name_override=args.display_name_override,
-        export_root_override=args.export_root_override,
-        high_texture_size=args.high_texture_size,
-        medium_texture_size=args.medium_texture_size,
-        low_texture_size=args.low_texture_size,
-        medium_decimate_ratio=args.medium_decimate_ratio,
-        low_decimate_ratio=args.low_decimate_ratio,
-        thumbnail_size=args.thumbnail_size,
-        bake_behavior=args.bake_behavior,
-        write_report=not args.no_report,
-        verify_autobake_adapter=args.verify_autobake_adapter,
+def print_stage_header(stage_name: str) -> None:
+    report = getattr(builtins, '_testbed_active_report', None)
+    if report is not None:
+        report.summary(f'\n=== Stage: {stage_name} ===')
+        report.summary(STAGE_DESCRIPTIONS[stage_name])
+        return
+    print(f'\n=== Stage: {stage_name} ===')
+    print(STAGE_DESCRIPTIONS[stage_name])
+
+
+def summarize_issue_groups(messages: list[str]) -> list[tuple[str, int]]:
+    grouped: dict[str, int] = {}
+    for message in messages:
+        normalized = re.sub(r'"[^"]+"', '"<name>"', message)
+        normalized = re.sub(r'(?<![A-Za-z])[A-Za-z]:[^\n]+', '<path>', normalized)
+        grouped[normalized] = grouped.get(normalized, 0) + 1
+    return sorted(grouped.items(), key=lambda item: (-item[1], item[0]))
+
+
+def print_stage_summary(stage_name: str, report: ExportReport, snapshot: ReportSnapshot) -> None:
+    stage_warnings = report.warnings[snapshot.warning_count:]
+    stage_errors = report.errors[snapshot.error_count:]
+    warning_groups = summarize_issue_groups(stage_warnings)
+    error_groups = summarize_issue_groups(stage_errors)
+    report.summary(
+        f'--- Stage complete: {stage_name} '
+        f'(warnings={len(stage_warnings)}, errors={len(stage_errors)})'
     )
+    if stage_warnings:
+        report.summary('Stage warning groups:')
+        for warning, count in warning_groups[:5]:
+            report.summary(f'  - {count}x {warning}')
+        if len(warning_groups) > 5:
+            report.summary(f'  - {len(warning_groups) - 5} more warning groups in the log file.')
+    if stage_errors:
+        report.summary('Stage error groups:')
+        for error, count in error_groups:
+            report.summary(f'  - {count}x {error}')
+
+
+def run_stage(stage_name: str, report: ExportReport, callback: object) -> object:
+    builtins._testbed_active_report = report
+    print_stage_header(stage_name)
+    snapshot = take_report_snapshot(report)
+    try:
+        return callback()
+    except Exception as error:
+        report.error(f'Stage "{stage_name}" failed: {error}')
+        raise
+    finally:
+        print_stage_summary(stage_name, report, snapshot)
+        if getattr(builtins, '_testbed_active_report', None) is report:
+            del builtins._testbed_active_report
 
 
 def slugify(value: str) -> str:
@@ -279,12 +384,17 @@ def validate_scene(source_collection: object, report: ExportReport) -> list[obje
         if object_.library is not None:
             report.warn(f'Object "{object_.name}" is linked from an external library; export will use the evaluated object state.')
 
+        unapplied_transforms: list[str] = []
         if any(abs(value) > 0.0001 for value in object_.location[:]):
-            report.warn(f'Object "{object_.name}" has unapplied location transforms.')
+            unapplied_transforms.append('location')
         if any(abs(value) > 0.0001 for value in object_.rotation_euler[:]):
-            report.warn(f'Object "{object_.name}" has unapplied rotation transforms.')
+            unapplied_transforms.append('rotation')
         if any(abs(value - 1.0) > 0.0001 for value in object_.scale[:]):
-            report.warn(f'Object "{object_.name}" has unapplied scale transforms.')
+            unapplied_transforms.append('scale')
+        if unapplied_transforms:
+            report.warn(
+                f'Object "{object_.name}" has unapplied transforms: {", ".join(unapplied_transforms)}.'
+            )
 
         mesh = object_.data
         if hasattr(mesh, 'uv_layers') and len(mesh.uv_layers) == 0:
@@ -326,6 +436,20 @@ def create_package_layout(paths: ExportPaths) -> None:
     ensure_directory(paths.low_glb_path.parent)
     ensure_directory(paths.thumbnail_path.parent)
     ensure_directory(paths.hdr_dir)
+
+
+def validate_packaging_inputs(paths: ExportPaths) -> None:
+    missing_paths = [
+        path
+        for path in (paths.high_glb_path, paths.medium_glb_path, paths.low_glb_path)
+        if not path.exists()
+    ]
+    if missing_paths:
+        missing_labels = ', '.join(str(path) for path in missing_paths)
+        raise RuntimeError(
+            'The package stage requires all GLB exports to exist first. '
+            f'Missing outputs: {missing_labels}'
+        )
 
 
 def vector_to_tuple(vector: Vector) -> list[float]:
@@ -505,6 +629,65 @@ def analyze_material(material: object, blend_dir: Path, report: ExportReport) ->
         analysis.status = 'partial'
 
     return analysis
+
+
+def describe_image_reference(image: object | None) -> str:
+    if image is None:
+        return 'none'
+
+    image_path = resolve_image_path(image)
+    if image_path is None:
+        return image.name
+    return f'{image.name} ({image_path.name})'
+
+
+def log_material_analysis_details(analysis_cache: dict[str, MaterialAnalysis], report: ExportReport) -> None:
+    report.info('Material analysis details:')
+    for material_name in sorted(analysis_cache.keys()):
+        analysis = analysis_cache[material_name]
+        report.info(
+            '  '
+            f'{analysis.name}: status={analysis.status}; '
+            f'missing={", ".join(analysis.missing) if analysis.missing else "none"}; '
+            f'base_color={describe_image_reference(analysis.base_color_image)}; '
+            f'normal={describe_image_reference(analysis.normal_image)}; '
+            f'roughness={describe_image_reference(analysis.roughness_image)}; '
+            f'metallic={describe_image_reference(analysis.metallic_image)}; '
+            f'ao={describe_image_reference(analysis.ao_image)}; '
+            f'emissive={describe_image_reference(analysis.emissive_image)}; '
+            f'orm={describe_image_reference(analysis.orm_image)}'
+        )
+        if analysis.notes:
+            for note in analysis.notes:
+                report.info(f'    note: {note}')
+
+
+def describe_object_materials(object_: object) -> str:
+    materials = [slot.material.name for slot in object_.material_slots if slot.material is not None]
+    if not materials:
+        return 'none'
+    return ', '.join(materials)
+
+
+def log_object_analysis_details(
+    mesh_objects: list[object],
+    bundles: dict[str, MeshBundle],
+    report: ExportReport,
+) -> None:
+    report.info('Object analysis details:')
+    for object_ in sorted(mesh_objects, key=lambda item: item.name):
+        match = LOD_SUFFIX_PATTERN.match(object_.name)
+        bundle_name = match.group('base') if match else object_.name
+        bundle = bundles.get(bundle_name)
+        bundle_lods = sorted(bundle.existing_lods.keys()) if bundle is not None else []
+        lod_label = f'LOD{match.group("level")}' if match else 'source'
+        report.info(
+            '  '
+            f'{object_.name}: role={lod_label}; '
+            f'bundle={bundle_name}; '
+            f'available_lods={", ".join(f"LOD{level}" for level in bundle_lods) if bundle_lods else "generated-from-source"}; '
+            f'materials={describe_object_materials(object_)}'
+        )
 
 
 def resolve_image_path(image: object) -> Path | None:
@@ -901,7 +1084,7 @@ def copy_environment_image(environment_path: Path | None, paths: ExportPaths, re
         return None
     target_path = paths.hdr_dir / environment_path.name
     shutil.copy2(environment_path, target_path)
-    report.info(f'Copied environment map to {target_path}')
+    report.summary(f'Copied environment map to {target_path}')
     return relative_manifest_path(target_path, paths.manifest_path)
 
 
@@ -923,7 +1106,7 @@ def render_thumbnail(paths: ExportPaths, size: int, report: ExportReport) -> Non
         render.resolution_y = size
         render.resolution_percentage = 100
         bpy.ops.render.render(write_still=True)
-        report.info(f'Rendered thumbnail to {paths.thumbnail_path}')
+        report.summary(f'Rendered thumbnail to {paths.thumbnail_path}')
     finally:
         render.filepath = previous_settings['filepath']
         render.image_settings.file_format = previous_settings['image_settings_file_format']
@@ -980,12 +1163,12 @@ class AutoBake2Adapter:
 
     def describe(self) -> None:
         if self.status.installed:
-            self.report.info('Detected Auto Bake 2 add-on module bl_ext.user_default.auto_bake.')
+            self.report.summary('Detected Auto Bake 2 add-on module bl_ext.user_default.auto_bake.')
         else:
-            self.report.info('Auto Bake 2 add-on module was not detected.')
+            self.report.summary('Auto Bake 2 add-on module was not detected.')
 
         if self.status.operators_available:
-            self.report.info('Verified bpy.ops.autobake operator namespace.')
+            self.report.summary('Verified bpy.ops.autobake operator namespace.')
 
         for warning in self.status.warnings:
             self.report.warn(warning)
@@ -1020,7 +1203,7 @@ class AutoBake2Adapter:
                     divide_value=2.0,
                 )
             self.status.used = True
-            self.report.info('Auto Bake 2 populated source, target, and bake list state.')
+            self.report.summary('Auto Bake 2 populated source, target, and bake list state.')
             return True
         except Exception as error:
             self.status.errors.append(str(error))
@@ -1033,7 +1216,7 @@ class AutoBake2Adapter:
         try:
             bpy.ops.autobake.start(rebake=False, index=0, object=False, start_none=False)
             self.status.used = True
-            self.report.info('Auto Bake 2 start operator completed.')
+            self.report.summary('Auto Bake 2 start operator completed.')
         except Exception as error:
             self.status.errors.append(str(error))
             self.report.warn(f'Auto Bake 2 start operator failed: {error}')
@@ -1041,7 +1224,7 @@ class AutoBake2Adapter:
 
         try:
             bpy.ops.autobake.confirm(swap_object='Baked', do_swap=False)
-            self.report.info('Auto Bake 2 confirm operator completed.')
+            self.report.summary('Auto Bake 2 confirm operator completed.')
         except Exception as error:
             self.report.warn(f'Auto Bake 2 confirm operator was not required or failed safely: {error}')
         return True
@@ -1093,7 +1276,7 @@ def export_quality_level(
                 object_.select_set(True)
             bpy.context.view_layer.objects.active = quality_objects[0]
             export_glb(quality.glb_path, report)
-        report.info(f'Exported {quality.label} GLB to {quality.glb_path}')
+        report.summary(f'Exported {quality.label} GLB to {quality.glb_path}')
         return True
     finally:
         cleanup_temp_images(temp_images)
@@ -1129,7 +1312,7 @@ def write_manifest(manifest: dict[str, object], paths: ExportPaths, report: Expo
     with paths.manifest_path.open('w', encoding='utf-8') as handle:
         json.dump(manifest, handle, indent=2)
         handle.write('\n')
-    report.info(f'Wrote manifest to {paths.manifest_path}')
+    report.summary(f'Wrote manifest to {paths.manifest_path}')
 
 
 def build_index_snippet(package_name: str, display_name: str) -> str:
@@ -1149,6 +1332,7 @@ def write_report_file(
     index_snippet: str,
     report: ExportReport,
     autobake_status: AutoBakeStatus,
+    executed_stages: tuple[str, ...],
 ) -> None:
     lines = [
         'Three.js Graphics Testbed Blender export report',
@@ -1156,6 +1340,7 @@ def write_report_file(
         f'Collection id: {package_name}',
         f'Display name: {display_name}',
         f'Manifest path: {paths.manifest_path}',
+        f'Executed stages: {", ".join(executed_stages)}',
         '',
         'Outputs',
         f'- {paths.high_glb_path}',
@@ -1202,102 +1387,303 @@ def write_report_file(
 
     with paths.report_path.open('w', encoding='utf-8') as handle:
         handle.write('\n'.join(lines) + '\n')
-    report.info(f'Wrote export report to {paths.report_path}')
+    report.summary(f'Wrote export report to {paths.report_path}')
 
 
 def print_console_summary(paths: ExportPaths, index_snippet: str, report: ExportReport) -> None:
-    print('\n=== Three.js Graphics Testbed Export Summary ===')
-    print(f'Package root: {paths.package_root}')
-    print(f'Manifest: {paths.manifest_path}')
-    print('Paste this into public/collections-index.json manually:')
-    print(index_snippet)
-    print('Copy the generated collection folder into public/collections/ manually before local testing.')
-    print('For KTX2 conversion after install:')
-    print(f'  gltf-transform etc1s {paths.high_glb_path.name} {paths.high_glb_path.stem}_etc1s.glb')
-    print(f'  gltf-transform uastc {paths.high_glb_path.name} {paths.high_glb_path.stem}_uastc.glb')
-    print(f'  gltfpack -tc -i {paths.high_glb_path.name} -o {paths.high_glb_path.stem}_gltfpack.glb')
-    if report.warnings:
-        print('Warnings:')
-        for warning in report.warnings:
-            print(f'  - {warning}')
+    report.info('Paste this into public/collections-index.json manually:')
+    report.info(index_snippet)
+    report.info('For KTX2 conversion after install:')
+    report.info(f'  gltf-transform etc1s {paths.high_glb_path.name} {paths.high_glb_path.stem}_etc1s.glb')
+    report.info(f'  gltf-transform uastc {paths.high_glb_path.name} {paths.high_glb_path.stem}_uastc.glb')
+    report.info(f'  gltfpack -tc -i {paths.high_glb_path.name} -o {paths.high_glb_path.stem}_gltfpack.glb')
+    report.summary('\n=== Three.js Graphics Testbed Export Summary ===')
+    report.summary(f'Package root: {paths.package_root}')
+    report.summary(f'Manifest: {paths.manifest_path}')
+    report.summary(f'Collections index snippet saved in the detailed log: {report.log_path}')
+    report.summary('Copy the generated collection folder into public/collections/ manually before local testing.')
+    report.summary('See the detailed log for the index snippet, KTX2 command examples, and full warnings.')
 
 
-def main() -> None:
-    config = parse_args()
-    report = ExportReport()
-    report.info(f'Starting Three.js Graphics Testbed collection export script v{SCRIPT_VERSION}.')
+def execute_export(config: ExportConfig) -> dict[str, object]:
+    requested_stages = resolve_requested_stages(config)
+    report = ExportReport(log_path=resolve_log_path(config))
+    report.summary(f'Starting Three.js Graphics Testbed collection export script v{SCRIPT_VERSION}.')
+    report.summary(f'Executing stages: {", ".join(requested_stages)}')
+    if report.log_path is not None:
+        report.summary(f'Detailed log file: {report.log_path}')
 
     blend_path = Path(bpy.data.filepath).resolve() if bpy.data.filepath else None
     try:
-        source_collection, package_name, display_name = resolve_source_collection(config, report)
-        mesh_objects = validate_scene(source_collection, report)
-        assert blend_path is not None
-        paths = build_output_paths(blend_path, package_name, config)
-        create_package_layout(paths)
+        stage_state: dict[str, object] = {
+            'source_collection': None,
+            'package_name': None,
+            'display_name': None,
+            'mesh_objects': None,
+            'paths': None,
+            'initial_camera_position': None,
+            'initial_control_target': None,
+            'analysis_cache': None,
+            'bundles': None,
+            'quality_plans': None,
+            'autobake': None,
+            'bake_required_materials': None,
+        }
 
-        initial_camera_position, initial_control_target = derive_initial_view(
-            mesh_objects,
-            source_collection,
-            package_name,
-        )
-        report.info(f'Using source collection "{source_collection.name}" and package id "{package_name}".')
-
-        analysis_cache = analyze_materials(mesh_objects, blend_path.parent, report)
-        bundles = build_mesh_bundles(mesh_objects)
-        quality_plans = build_quality_plans(paths, config)
-
-        autobake = AutoBake2Adapter(report)
-        autobake.describe()
-
-        bake_required_materials = [analysis for analysis in analysis_cache.values() if analysis.status == 'bake-required']
-        if config.verify_autobake_adapter:
-            autobake.verify(mesh_objects[:1], mesh_objects[:1])
-        elif bake_required_materials and config.bake_behavior in {'auto', 'autobake'}:
-            report.warn(
-                'Some materials are procedural or incomplete. The script will attempt to configure Auto Bake 2, '
-                'but fully automatic baking still depends on the scene and add-on configuration.'
+        def inspect_stage() -> None:
+            source_collection, package_name, display_name = resolve_source_collection(config, report)
+            mesh_objects = validate_scene(source_collection, report)
+            assert blend_path is not None
+            paths = build_output_paths(blend_path, package_name, config)
+            create_package_layout(paths)
+            initial_camera_position, initial_control_target = derive_initial_view(
+                mesh_objects,
+                source_collection,
+                package_name,
             )
-            autobake.configure_session(mesh_objects, mesh_objects)
-            autobake.start_session()
-        elif bake_required_materials and config.bake_behavior == 'manual':
-            report.warn(
-                'Some materials need baking. Manual or direct Blender bake fallback is still required for these node graphs.'
+            report.info(f'Using source collection "{source_collection.name}" and package id "{package_name}".')
+            stage_state.update(
+                {
+                    'source_collection': source_collection,
+                    'package_name': package_name,
+                    'display_name': display_name,
+                    'mesh_objects': mesh_objects,
+                    'paths': paths,
+                    'initial_camera_position': initial_camera_position,
+                    'initial_control_target': initial_control_target,
+                }
+            )
+            report.summary(
+                f'Inspect summary: collection="{source_collection.name}", visible meshes={len(mesh_objects)}, package id="{package_name}".'
             )
 
-        staging_dir = Path(tempfile.mkdtemp(prefix=f'{package_name}_blendprep_'))
-        exported_count = 0
-        try:
-            for quality in quality_plans:
-                if export_quality_level(quality, bundles, analysis_cache, staging_dir, report):
-                    exported_count += 1
-        finally:
-            shutil.rmtree(staging_dir, ignore_errors=True)
+        def analyze_stage() -> None:
+            mesh_objects = stage_state['mesh_objects']
+            assert blend_path is not None
+            analysis_cache = analyze_materials(mesh_objects, blend_path.parent, report)
+            bundles = build_mesh_bundles(mesh_objects)
+            quality_plans = build_quality_plans(stage_state['paths'], config)
+            autobake = AutoBake2Adapter(report)
+            autobake.describe()
+            bake_required_materials = [
+                analysis for analysis in analysis_cache.values() if analysis.status == 'bake-required'
+            ]
+            report.summary(
+                'Material analysis summary: '
+                f'{sum(1 for analysis in analysis_cache.values() if analysis.status == "ready")} ready, '
+                f'{sum(1 for analysis in analysis_cache.values() if analysis.status == "partial")} partial, '
+                f'{len(bake_required_materials)} bake-required.'
+            )
+            report.summary(f'LOD bundle count: {len(bundles)}')
+            log_material_analysis_details(analysis_cache, report)
+            log_object_analysis_details(mesh_objects, bundles, report)
+            stage_state.update(
+                {
+                    'analysis_cache': analysis_cache,
+                    'bundles': bundles,
+                    'quality_plans': quality_plans,
+                    'autobake': autobake,
+                    'bake_required_materials': bake_required_materials,
+                }
+            )
 
-        if exported_count == 0:
-            raise RuntimeError('All GLB exports failed. No assets were written.')
+        def bake_stage() -> None:
+            autobake = stage_state['autobake']
+            mesh_objects = stage_state['mesh_objects']
+            bake_required_materials = stage_state['bake_required_materials']
+            if config.verify_autobake_adapter:
+                autobake.verify(mesh_objects[:1], mesh_objects[:1])
+                return
+            if bake_required_materials and config.bake_behavior in {'auto', 'autobake'}:
+                report.warn(
+                    'Some materials are procedural or incomplete. The script will attempt to configure Auto Bake 2, '
+                    'but fully automatic baking still depends on the scene and add-on configuration.'
+                )
+                autobake.configure_session(mesh_objects, mesh_objects)
+                autobake.start_session()
+                return
+            if bake_required_materials and config.bake_behavior == 'manual':
+                report.warn(
+                    'Some materials need baking. Manual or direct Blender bake fallback is still required for these node graphs.'
+                )
+                return
+            report.summary('No bake action was required for the selected scene and bake settings.')
 
-        render_thumbnail(paths, config.thumbnail_size, report)
-        environment_source = detect_environment_image(report)
-        environment_manifest_path = copy_environment_image(environment_source, paths, report)
+        def export_single_stage(stage_name: str) -> None:
+            quality_lookup = {quality.label: quality for quality in stage_state['quality_plans']}
+            quality = quality_lookup[stage_name.removeprefix('export-')]
+            staging_dir = Path(tempfile.mkdtemp(prefix=f'{stage_state["package_name"]}_blendprep_'))
+            try:
+                if not export_quality_level(
+                    quality,
+                    stage_state['bundles'],
+                    stage_state['analysis_cache'],
+                    staging_dir,
+                    report,
+                ):
+                    raise RuntimeError(f'The {quality.label} export stage did not produce any objects to export.')
+            finally:
+                shutil.rmtree(staging_dir, ignore_errors=True)
 
-        manifest = build_manifest(
-            package_name,
-            display_name,
-            paths,
-            initial_camera_position,
-            initial_control_target,
-            environment_manifest_path,
-        )
-        write_manifest(manifest, paths, report)
+        def package_stage() -> None:
+            paths = stage_state['paths']
+            validate_packaging_inputs(paths)
+            render_thumbnail(paths, config.thumbnail_size, report)
+            environment_source = detect_environment_image(report)
+            environment_manifest_path = copy_environment_image(environment_source, paths, report)
+            manifest = build_manifest(
+                stage_state['package_name'],
+                stage_state['display_name'],
+                paths,
+                stage_state['initial_camera_position'],
+                stage_state['initial_control_target'],
+                environment_manifest_path,
+            )
+            write_manifest(manifest, paths, report)
+            index_snippet = build_index_snippet(stage_state['package_name'], stage_state['display_name'])
+            if config.write_report:
+                write_report_file(
+                    paths,
+                    stage_state['package_name'],
+                    stage_state['display_name'],
+                    manifest,
+                    index_snippet,
+                    report,
+                    stage_state['autobake'].status,
+                    requested_stages,
+                )
+            print_console_summary(paths, index_snippet, report)
 
-        index_snippet = build_index_snippet(package_name, display_name)
-        if config.write_report:
-            write_report_file(paths, package_name, display_name, manifest, index_snippet, report, autobake.status)
-        print_console_summary(paths, index_snippet, report)
+        if 'inspect' in requested_stages or any(
+            stage_name in requested_stages
+            for stage_name in ('analyze', 'bake', 'export-high', 'export-medium', 'export-low', 'package')
+        ):
+            run_stage('inspect', report, inspect_stage)
+
+        if 'analyze' in requested_stages or any(
+            stage_name in requested_stages
+            for stage_name in ('bake', 'export-high', 'export-medium', 'export-low', 'package')
+        ):
+            run_stage('analyze', report, analyze_stage)
+
+        if 'bake' in requested_stages:
+            run_stage('bake', report, bake_stage)
+
+        for export_stage_name in ('export-high', 'export-medium', 'export-low'):
+            if export_stage_name in requested_stages:
+                run_stage(
+                    export_stage_name,
+                    report,
+                    lambda stage_name=export_stage_name: export_single_stage(stage_name),
+                )
+
+        if 'package' in requested_stages:
+            run_stage('package', report, package_stage)
+
+        return {
+            'success': True,
+            'requested_stages': requested_stages,
+            'report': report,
+            'package_name': stage_state['package_name'],
+            'display_name': stage_state['display_name'],
+            'paths': stage_state['paths'],
+            'log_path': report.log_path,
+            'autobake_status': stage_state['autobake'].status if stage_state['autobake'] is not None else None,
+        }
     except Exception as error:
-        report.error(str(error))
-        traceback.print_exc()
-        raise
+        if not report.errors:
+            report.error(str(error))
+        report.log_traceback()
+        report.summary(f'Execution failed. See the detailed log: {report.log_path}')
+        return {
+            'success': False,
+            'requested_stages': requested_stages,
+            'report': report,
+            'package_name': None,
+            'display_name': None,
+            'paths': None,
+            'log_path': report.log_path,
+            'autobake_status': None,
+            'error': str(error),
+        }
+
+
+def store_last_export_result(result: dict[str, object]) -> None:
+    namespace = getattr(builtins, 'testbed_export', None)
+    if namespace is not None:
+        namespace.last_result = result
+
+
+def get_last_export_result() -> dict[str, object] | None:
+    namespace = getattr(builtins, 'testbed_export', None)
+    if namespace is None:
+        return None
+    return getattr(namespace, 'last_result', None)
+
+
+def run_export_stages(*stage_names: str, echo_result: bool = False, **config_overrides: object) -> dict[str, object] | None:
+    requested_stages = tuple(stage_names) if stage_names else ('all',)
+    config = build_export_config(stages=requested_stages, **config_overrides)
+    result = execute_export(config)
+    store_last_export_result(result)
+    print('Saved last export result to testbed_export.last_result.')
+    if result.get('log_path') is not None:
+        print(f'Detailed log file: {result["log_path"]}')
+    if not result.get('success', False):
+        print('The command finished with errors. See the detailed log for the full traceback and diagnostics.')
+    if echo_result:
+        return result
+    return None
+
+
+def run_export_stage(stage_name: str, echo_result: bool = False, **config_overrides: object) -> dict[str, object] | None:
+    return run_export_stages(stage_name, echo_result=echo_result, **config_overrides)
+
+
+def print_console_usage() -> None:
+    print('Three.js Graphics Testbed export helpers are registered for Blender\'s Python console.')
+    print('Run this script from the Scripting tab once, then use one of these commands in the Python console:')
+    print('  list_testbed_export_stages()')
+    print("  run_testbed_export_stage('inspect')")
+    print("  run_testbed_export_stages('inspect', 'analyze')")
+    print("  run_testbed_export_stage('bake', bake_behavior='manual')")
+    print(r"  run_testbed_export_stage('inspect', log_path_override='F:/tmp/testbed-inspect.log')")
+    print("  run_testbed_export_stages('export-high', 'export-medium', 'export-low')")
+    print("  run_testbed_export_stage('package')")
+    print('These helpers store the last result at testbed_export.last_result and do not echo it unless echo_result=True is passed.')
+    print('Optional keyword arguments:')
+    print('  collection_name_override, display_name_override, export_root_override,')
+    print('  high_texture_size, medium_texture_size, low_texture_size,')
+    print('  medium_decimate_ratio, low_decimate_ratio, thumbnail_size,')
+    print('  bake_behavior, write_report, verify_autobake_adapter, log_path_override')
+
+
+def register_console_helpers() -> SimpleNamespace:
+    namespace = SimpleNamespace(
+        help=print_console_usage,
+        list_stages=print_stage_catalog,
+        run_stage=run_export_stage,
+        run_stages=run_export_stages,
+        get_last_result=get_last_export_result,
+        build_config=build_export_config,
+        default_config=DEFAULT_CONFIG,
+        last_result=None,
+    )
+
+    bpy.app.driver_namespace['testbed_export'] = namespace
+    builtins.testbed_export = namespace
+    builtins.testbed_export_help = print_console_usage
+    builtins.list_testbed_export_stages = print_stage_catalog
+    builtins.run_testbed_export_stage = run_export_stage
+    builtins.run_testbed_export_stages = run_export_stages
+    builtins.get_last_testbed_export_result = get_last_export_result
+    builtins.build_testbed_export_config = build_export_config
+    return namespace
+
+
+def main() -> None:
+    register_console_helpers()
+    print_console_usage()
 
 
 if __name__ == '__main__':
