@@ -1,15 +1,18 @@
 # Instructions for Preparing Blender and UE Projects for Export
 
-To standardize assets for the Three.js test project, export all collections to GLB format (binary GLTF) with Draco compression for optimized loading in the browser. This preserves PBR materials, textures, and geometry while reducing file sizes. Create three variants per collection: low-res (simplified geometry, 4K textures downscaled to 1K, basic LOD), medium (original with optimizations), high-res (full detail, 8K textures if available). Host exports locally in the project's `src/assets` folder for fast, async loading via Three.js GLTFLoader. Use tools like gltfpack or Blender's built-in optimizer post-export to minify.
+To standardize assets for the Three.js test project, export all collections to GLB format (binary glTF). Draco-compressed geometry and KTX2 texture payloads are supported by the current runtime, so you can use them when optimizing browser delivery. Create three variants per collection: low-res (simplified geometry, 4K textures downscaled to 1K, basic LOD), medium (original with optimizations), high-res (full detail, 8K textures if available). Host exports in the project's `public/` folder so Angular serves them directly at runtime.
 
 ## Naming conventions and repo layout
 
-- Each collection: /collections/<collection-name>/
+- Place the index at `public/collections-index.json`.
+- Each collection: `public/collections/<collection-name>/`
   - thumbnails/  (png thumbnails)
   - export/low/, export/medium/, export/high/  (.glb outputs)
   - hdr/  (environment .exr/.hdr)
   - manifest.json
-- LOD naming: <meshName>_LOD0, <meshName>_LOD1, <meshName>_LOD2 (LOD0 = highest detail).
+- LOD naming: `meshName_LOD0`, `meshName_LOD1`, `meshName_LOD2` (`LOD0` = highest detail).
+- `manifestUrl` entries in `collections-index.json` may be absolute or relative to the index file.
+- `thumbnail`, `lods`, and `environment` entries inside `manifest.json` may be absolute or relative to that manifest file.
 
 ## Blender workflow
 
@@ -63,10 +66,6 @@ To standardize assets for the Three.js test project, export all collections to G
 
 ## Manifest and metadata
 
-- Create manifest.json per collection with fields:
-{
-  "name": "the_shed",
-  "displayName": "The Shed",
-  "thumbnail": "thumbnails/the_shed.png",
-  "lods":["export/high/the_shed_LOD0.glb","export/medium/the_shed_LOD1.glb"],
-}
+- Create `manifest.json` per collection with these fields: `name`, `displayName`, `thumbnail`, `initialCameraPosition`, `initialControlTarget`, `lods`, and optional `environment`.
+- Keep `lods` ordered from highest to lowest detail so `lods[0]` is the nearest, highest-detail asset.
+- The canonical example manifest lives in `README.md`.

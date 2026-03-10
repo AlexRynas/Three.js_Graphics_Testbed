@@ -84,12 +84,20 @@ flowchart TD
 
 ## Assets and manifests
 
-The testbed expects a collections index at `/assets/collections-index.json` and optional per-collection manifests. If the index is missing, the app automatically uses a procedural demo scene.
+The testbed expects a collections index at `/collections-index.json` and optional per-collection manifests served from the Angular `public/` folder. If the index is missing, the app automatically uses a procedural demo scene.
 
 Each collection manifest must include:
 
 - `initialCameraPosition`: initial camera position as `[x, y, z]`
 - `initialControlTarget`: initial orbit-controls target as `[x, y, z]`
+
+Runtime notes:
+
+- Put the index at `public/collections-index.json`.
+- Put collection files under `public/collections/<collection-name>/...`.
+- `manifestUrl` values in the index may be absolute or relative to `collections-index.json`.
+- `thumbnail`, `lods`, and `environment` values inside a manifest may be absolute or relative to that manifest file.
+- Draco-compressed glTF and KTX2 texture payloads are supported. The required Three.js decoders/transcoders are copied into the build automatically.
 
 Example collections index:
 
@@ -98,7 +106,7 @@ Example collections index:
   {
     "id": "the_shed",
     "displayName": "The Shed",
-    "manifestUrl": "/assets/collections/the_shed/manifest.json"
+    "manifestUrl": "collections/the_shed/manifest.json"
   }
 ]
 ```
@@ -143,6 +151,6 @@ npm run build
 
 ## External references
 
-- Three.js WebGPU parity/status tracker: https://github.com/mrdoob/three.js/issues/29295 (last verified: 2026-02-12)
+- Three.js WebGPU parity/status tracker: <https://github.com/mrdoob/three.js/issues/29295> (last verified: 2026-02-12)
 
 Default local URL: [http://localhost:4200/](http://localhost:4200/)

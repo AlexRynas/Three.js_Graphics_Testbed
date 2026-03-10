@@ -27,6 +27,16 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "basis_transcoder.*",
+                "input": "node_modules/three/examples/jsm/libs/basis",
+                "output": "/basis"
+              },
+              {
+                "glob": "draco_*.*",
+                "input": "node_modules/three/examples/jsm/libs/draco/gltf",
+                "output": "/draco/gltf"
               }
             ],
             "styles": [

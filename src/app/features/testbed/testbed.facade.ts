@@ -277,6 +277,7 @@ export class TestbedFacade {
     const result = await this.runtimeService.createRenderer(canvas, mode, this.settings());
     this.activeThree = result.threeModule;
     this.renderer = result.renderer;
+    this.assetService.setRenderer(result.renderer);
     this.rendererLabel.set(result.rendererLabel);
     this.usingMsaa = result.usingMsaa;
     this.currentMode = result.currentMode;
@@ -805,6 +806,7 @@ export class TestbedFacade {
       this.renderer.dispose();
     }
     this.renderer = null;
+    this.assetService.setRenderer(null);
     this.frameStats?.dispose();
     this.frameStats = null;
     this.latestStats = null;
