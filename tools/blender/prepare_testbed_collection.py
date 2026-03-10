@@ -23,7 +23,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.3.0'
+SCRIPT_VERSION = '0.3.1'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -1150,6 +1150,7 @@ class AutoBake2Adapter:
         self.report = report
         self.scene = bpy.context.scene
         self.status = self._detect_status()
+        self.prepared_objects: list[object] = []
 
     def _detect_status(self) -> AutoBakeStatus:
         module_spec = importlib.util.find_spec('bl_ext.user_default.auto_bake')
@@ -1206,36 +1207,81 @@ class AutoBake2Adapter:
     def can_run(self) -> bool:
         return self.status.installed and self.status.operators_available
 
-    def _select_objects(self, objects: list[object]) -> None:
-        bpy.ops.object.select_all(action='DESELECT')
-        for object_ in objects:
-            object_.select_set(True)
-        if objects:
-            bpy.context.view_layer.objects.active = objects[0]
+    def ensure_bake_list(self, texture_size: int) -> bool:
+        bake_list = getattr(self.scene, 'autobake_bake_list', None)
+        properties = getattr(self.scene, 'autobake_properties', None)
+        if bake_list is None or properties is None:
+            self.status.errors.append('Auto Bake 2 bake-list properties are unavailable on the current scene.')
+            self.report.warn('Auto Bake 2 session setup failed: bake-list properties are unavailable on the current scene.')
+            return False
 
-    def configure_session(self, source_objects: list[object], target_objects: list[object]) -> bool:
+        if bake_list and any(item.Gate for item in bake_list):
+            return True
+
+        bake_list.clear()
+        properties.ab_bake_list_item_count = 0
+        properties.ab_channel_pack_r = 'Ambient Occlusion'
+        properties.ab_channel_pack_g = 'Roughness'
+        properties.ab_channel_pack_b = 'Metallic'
+
+        for bake_type in ('Base Color', 'Normal', 'Channel Packing'):
+            item = bake_list.add()
+            item.Type = bake_type
+            item.Size = texture_size
+            item.Gate = True
+
+        self.report.summary(
+            f'Auto Bake 2 seeded the bake list with Base Color, Normal, and Channel Packing at {texture_size}px.'
+        )
+        return True
+
+    def _select_objects(self, objects: list[object]) -> list[object]:
+        bpy.ops.object.select_all(action='DESELECT')
+        selected_objects: list[object] = []
+        for object_ in objects:
+            if object_.name not in self.scene.objects:
+                continue
+            object_.select_set(True)
+            selected_objects.append(object_)
+        if selected_objects:
+            bpy.context.view_layer.objects.active = selected_objects[0]
+            bpy.context.view_layer.update()
+        return selected_objects
+
+    def _prepare_objects(self, source_objects: list[object], target_objects: list[object]) -> list[object]:
+        prepared_objects: list[object] = []
+        seen_names: set[str] = set()
+        for object_ in [*target_objects, *source_objects]:
+            if object_ is None or getattr(object_, 'type', None) != 'MESH':
+                continue
+            if object_.name in seen_names or object_.hide_get() or object_.name not in self.scene.objects:
+                continue
+            seen_names.add(object_.name)
+            prepared_objects.append(object_)
+        return prepared_objects
+
+    def configure_session(self, source_objects: list[object], target_objects: list[object], texture_size: int) -> bool:
         if not self.can_run():
             return False
 
+        prepared_objects = self._prepare_objects(source_objects, target_objects)
+        if not prepared_objects:
+            self.status.errors.append('No visible mesh objects were available for Auto Bake 2.')
+            self.report.warn('Auto Bake 2 session setup failed: no visible mesh objects were available for baking.')
+            return False
+        if not self.ensure_bake_list(texture_size):
+            return False
+
         try:
-            with preserve_selection():
-                self._select_objects(source_objects)
-                bpy.ops.autobake.load_source(clear=True)
-
-                self._select_objects(target_objects)
-                bpy.ops.autobake.load_target(method='Target', clear=True)
-
-                bpy.ops.autobake.list_add(
-                    use_ctrl=False,
-                    iteration=2,
-                    scale_method='Multiply',
-                    multiply_value=2.0,
-                    divide_value=2.0,
-                )
+            self.scene.autobake_properties.ab_selected_to_active = False
+            self.prepared_objects = self._select_objects(prepared_objects)
             self.status.used = True
-            self.report.summary('Auto Bake 2 populated source, target, and bake list state.')
+            self.report.summary(
+                f'Auto Bake 2 prepared {len(self.prepared_objects)} selected object(s) for baking.'
+            )
             return True
         except Exception as error:
+            self.prepared_objects = []
             self.status.errors.append(str(error))
             self.report.warn(f'Auto Bake 2 session setup failed: {error}')
             return False
@@ -1243,27 +1289,31 @@ class AutoBake2Adapter:
     def start_session(self) -> bool:
         if not self.can_run():
             return False
+
+        selected_objects = self._select_objects(self.prepared_objects) if self.prepared_objects else list(bpy.context.selected_objects)
+        if not selected_objects:
+            message = 'Auto Bake 2 start operator failed: no visible mesh objects were available for selection.'
+            self.status.errors.append(message)
+            self.report.warn(message)
+            return False
+
         try:
             bpy.ops.autobake.start(rebake=False, index=0, object=False, start_none=False)
             self.status.used = True
-            self.report.summary('Auto Bake 2 start operator completed.')
+            self.report.summary(
+                'Auto Bake 2 start operator completed. The bake session continues asynchronously in the add-on.'
+            )
         except Exception as error:
             self.status.errors.append(str(error))
             self.report.warn(f'Auto Bake 2 start operator failed: {error}')
             return False
-
-        try:
-            bpy.ops.autobake.confirm(swap_object='Baked', do_swap=False)
-            self.report.summary('Auto Bake 2 confirm operator completed.')
-        except Exception as error:
-            self.report.warn(f'Auto Bake 2 confirm operator was not required or failed safely: {error}')
         return True
 
-    def verify(self, source_objects: list[object], target_objects: list[object]) -> None:
+    def verify(self, source_objects: list[object], target_objects: list[object], texture_size: int) -> None:
         if not self.can_run():
             self.report.warn('Auto Bake 2 verification was requested, but the add-on is not available.')
             return
-        if not self.configure_session(source_objects, target_objects):
+        if not self.configure_session(source_objects, target_objects, texture_size):
             self.report.warn('Auto Bake 2 verification could not configure a bake session.')
             return
         self.start_session()
@@ -1532,14 +1582,15 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             mesh_objects = stage_state['mesh_objects']
             bake_required_materials = stage_state['bake_required_materials']
             if config.verify_autobake_adapter:
-                autobake.verify(mesh_objects[:1], mesh_objects[:1])
+                autobake.verify(mesh_objects[:1], mesh_objects[:1], config.high_texture_size)
                 return
             if bake_required_materials and config.bake_behavior in {'auto', 'autobake'}:
-                report.warn(
-                    'Some materials are procedural or incomplete. The script will attempt to configure Auto Bake 2, '
-                    'but fully automatic baking still depends on the scene and add-on configuration.'
+                report.summary(
+                    'Some materials are procedural or incomplete. The script will select all visible mesh objects '
+                    'and launch Auto Bake 2 with an auto-seeded bake list when needed.'
                 )
-                autobake.configure_session(mesh_objects, mesh_objects)
+                if not autobake.configure_session(mesh_objects, mesh_objects, config.high_texture_size):
+                    return
                 autobake.start_session()
                 return
             if bake_required_materials and config.bake_behavior == 'manual':
