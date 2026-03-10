@@ -42,3 +42,4 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+tools/blender/__pycache__/prepare_testbed_collection.cpython-311.pyc

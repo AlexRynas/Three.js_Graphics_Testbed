@@ -16,6 +16,21 @@ To standardize assets for the Three.js test project, export all collections to G
 
 ## Blender workflow
 
+### Standalone export script
+
+Use the standalone Blender 4.5 script at `tools/blender/prepare_testbed_collection.py` when you want the repo's current collection package shape generated for you.
+
+- Default output root: `<blend-dir>/collections/<collection-name>/`
+- Generated layout: `export/high/<collection-name>_LOD0.glb`
+- Generated layout: `export/medium/<collection-name>_LOD1.glb`
+- Generated layout: `export/low/<collection-name>_LOD2.glb`
+- Generated layout: `thumbnails/<collection-name>.png`
+- Generated layout: `hdr/<environment>.hdr|exr`
+- Generated layout: `manifest.json`
+- The script writes manifest-relative asset paths so the generated folder can be copied into `public/collections/` without editing the manifest.
+- The script prints a recommended `collections-index.json` entry, but it does not edit `public/collections-index.json` for you.
+- Auto Bake 2 is treated as the preferred optional bake backend when it is installed and enabled; direct Blender baking remains a fallback path because arbitrary node graphs are still brittle.
+
 1. Scene cleanup
    - Apply transforms (Ctrl+A) to all meshes (Location, Rotation, Scale).
    - Remove non-renderable helper objects and cameras.
