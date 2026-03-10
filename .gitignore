@@ -43,3 +43,4 @@ __screenshots__/
 .DS_Store
 Thumbs.db
 tools/blender/__pycache__/prepare_testbed_collection.cpython-311.pyc
+tools/blender/__pycache__/create_testbed_house_scene.cpython-311.pyc
