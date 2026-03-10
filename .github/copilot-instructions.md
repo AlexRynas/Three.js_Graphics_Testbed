@@ -6,6 +6,14 @@ You are an expert in TypeScript, Angular, and scalable web application developme
 - Completely ignore `docs/ray-tracing-manual-porting-recommendations.md` for all tasks.
 - Do not read, analyze, summarize, cite, or use content from `docs/ray-tracing-manual-porting-recommendations.md`.
 
+## Memory Policy
+
+- Agent memory may remain enabled.
+- Do NOT create, update, or otherwise use repository-scoped memory files under `/memories/repo/` for this workspace.
+- Do NOT persist repository context as Markdown memory notes.
+- If repository context is useful during a task, keep it in the active conversation only unless the user explicitly asks for some other memory behavior.
+- Only use non-repository memory scopes if they are explicitly needed and do not store repository-specific notes there as a workaround.
+
 ## TypeScript Best Practices
 
 - Use strict type checking
