@@ -6,6 +6,7 @@ import importlib.util
 import json
 import re
 import shutil
+import sys
 import tempfile
 import traceback
 from contextlib import contextmanager
@@ -23,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.3.2'
+SCRIPT_VERSION = '0.3.3'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -158,6 +159,35 @@ class ReportSnapshot:
     error_count: int
 
 
+@dataclass(slots=True)
+class StageRunState:
+    async_complete: bool = False
+
+
+@dataclass(slots=True)
+class AutoBakeProgressSnapshot:
+    bake_status: str
+    object_counts: dict[str, int]
+    queue_counts: dict[str, int]
+    active_object: str | None
+    active_item: str | None
+
+    def signature(self) -> tuple[object, ...]:
+        return (
+            self.bake_status,
+            tuple(sorted(self.object_counts.items())),
+            tuple(sorted(self.queue_counts.items())),
+            self.active_object,
+            self.active_item,
+        )
+
+
+@dataclass(slots=True)
+class AsyncStageMonitor:
+    on_start: object
+    on_poll: object
+
+
 class ExportReport:
     def __init__(self, log_path: Path | None = None, reset_log: bool = False) -> None:
         self.messages: list[str] = []
@@ -177,6 +207,13 @@ class ExportReport:
 
     def summary(self, message: str) -> None:
         print(message)
+        self._emit(message)
+
+    def system(self, message: str) -> None:
+        stream = getattr(sys, '__stdout__', None)
+        if stream is not None:
+            stream.write(f'{message}\n')
+            stream.flush()
         self._emit(message)
 
     def log_traceback(self) -> None:
@@ -312,17 +349,42 @@ def print_stage_summary(stage_name: str, report: ExportReport, snapshot: ReportS
             report.summary(f'  - {count}x {error}')
 
 
-def run_stage(stage_name: str, report: ExportReport, callback: object) -> object:
+def start_async_stage_monitor(
+    stage_name: str,
+    report: ExportReport,
+    snapshot: ReportSnapshot,
+    monitor: AsyncStageMonitor,
+) -> None:
+    try:
+        monitor.on_start(stage_name, report, snapshot)
+    except Exception as error:
+        report.error(f'Stage "{stage_name}" async monitor failed to start: {error}')
+        raise
+
+
+def run_stage(
+    stage_name: str,
+    report: ExportReport,
+    callback: object,
+    state: StageRunState | None = None,
+) -> object:
     builtins._testbed_active_report = report
     print_stage_header(stage_name)
     snapshot = take_report_snapshot(report)
     try:
-        return callback()
+        result = callback()
+        if isinstance(result, AsyncStageMonitor):
+            start_async_stage_monitor(stage_name, report, snapshot, result)
+            if state is not None:
+                state.async_complete = True
+            return result
+        return result
     except Exception as error:
         report.error(f'Stage "{stage_name}" failed: {error}')
         raise
     finally:
-        print_stage_summary(stage_name, report, snapshot)
+        if not (state is not None and state.async_complete):
+            print_stage_summary(stage_name, report, snapshot)
         if getattr(builtins, '_testbed_active_report', None) is report:
             del builtins._testbed_active_report
 
@@ -392,6 +454,26 @@ def resolve_source_collection(config: ExportConfig, report: ExportReport) -> tup
     package_name = slugify(config.collection_name_override or source_collection.name or Path(bpy.data.filepath).stem)
     display_name = config.display_name_override or title_case_slug(package_name)
     return source_collection, package_name, display_name
+
+
+def configure_cycles_gpu_render(report: ExportReport) -> None:
+    scene = bpy.context.scene
+
+    try:
+        scene.render.engine = 'CYCLES'
+    except TypeError as error:
+        raise RuntimeError(f'Failed to switch the render engine to Cycles: {error}') from error
+
+    cycles_settings = getattr(scene, 'cycles', None)
+    if cycles_settings is None:
+        raise RuntimeError('Cycles render settings are unavailable after switching the render engine to Cycles.')
+
+    try:
+        cycles_settings.device = 'GPU'
+    except TypeError as error:
+        raise RuntimeError(f'Failed to switch the Cycles device to GPU Compute: {error}') from error
+
+    report.summary('Configured Blender render engine to Cycles with GPU Compute.')
 
 
 def validate_scene(source_collection: object, report: ExportReport) -> list[object]:
@@ -1143,8 +1225,15 @@ class AutoBake2Adapter:
     def __init__(self, report: ExportReport) -> None:
         self.report = report
         self.scene = bpy.context.scene
+        self.module = self._load_module()
         self.status = self._detect_status()
         self.prepared_objects: list[object] = []
+
+    def _load_module(self) -> object | None:
+        try:
+            return importlib.import_module('bl_ext.user_default.auto_bake')
+        except ImportError:
+            return None
 
     def _detect_status(self) -> AutoBakeStatus:
         module_spec = importlib.util.find_spec('bl_ext.user_default.auto_bake')
@@ -1200,6 +1289,141 @@ class AutoBake2Adapter:
 
     def can_run(self) -> bool:
         return self.status.installed and self.status.operators_available
+
+    def _read_bake_status(self) -> str:
+        if self.module is not None and hasattr(self.module, 'bake_status'):
+            value = getattr(self.module, 'bake_status')
+            if isinstance(value, str) and value:
+                return value
+        return 'UNKNOWN'
+
+    def _count_statuses(self, items: object) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for item in items or []:
+            status = getattr(item, 'Status', None)
+            if not status:
+                continue
+            counts[status] = counts.get(status, 0) + 1
+        return counts
+
+    def _active_object_name(self) -> str | None:
+        object_queue = getattr(self.scene, 'autobake_object_queue_list', None)
+        if object_queue is None:
+            return None
+        for item in object_queue:
+            if getattr(item, 'Status', None) == 'Baking' and getattr(item, 'Object', None) is not None:
+                return item.Object.name
+        return None
+
+    def _active_item_name(self) -> str | None:
+        queue_list = getattr(self.scene, 'autobake_queue_list', None)
+        if queue_list is None:
+            return None
+        for item in queue_list:
+            if getattr(item, 'Status', None) != 'Baking':
+                continue
+            item_type = getattr(item, 'Type', 'Unknown')
+            item_size = getattr(item, 'Size', 0)
+            item_multiplier = getattr(item, 'Multiplier', 0.0)
+            scale_label = f'{item_size}px' if item_size else f'{item_multiplier:.2f}x'
+            return f'{item_type} ({scale_label})'
+        return None
+
+    def _capture_progress_snapshot(self) -> AutoBakeProgressSnapshot:
+        object_queue = getattr(self.scene, 'autobake_object_queue_list', None)
+        queue_list = getattr(self.scene, 'autobake_queue_list', None)
+        return AutoBakeProgressSnapshot(
+            bake_status=self._read_bake_status(),
+            object_counts=self._count_statuses(object_queue),
+            queue_counts=self._count_statuses(queue_list),
+            active_object=self._active_object_name(),
+            active_item=self._active_item_name(),
+        )
+
+    def _session_is_active(self, snapshot: AutoBakeProgressSnapshot) -> bool:
+        if snapshot.bake_status not in {'IDLE', 'UNKNOWN'}:
+            return True
+        active_states = {'Pending', 'Baking'}
+        return any(status in active_states for status in snapshot.object_counts) or any(
+            status in active_states for status in snapshot.queue_counts
+        )
+
+    def _format_counts(self, counts: dict[str, int]) -> str:
+        if not counts:
+            return 'none'
+        return ', '.join(f'{status}={count}' for status, count in sorted(counts.items()))
+
+    def _log_progress_snapshot(self, snapshot: AutoBakeProgressSnapshot) -> None:
+        details: list[str] = [
+            f'bake_status={snapshot.bake_status}',
+            f'objects[{self._format_counts(snapshot.object_counts)}]',
+            f'items[{self._format_counts(snapshot.queue_counts)}]',
+        ]
+        if snapshot.active_object is not None:
+            details.append(f'active_object="{snapshot.active_object}"')
+        if snapshot.active_item is not None:
+            details.append(f'active_item="{snapshot.active_item}"')
+        self.report.info(f'Bake progress: {"; ".join(details)}')
+
+    def create_progress_monitor(self) -> AsyncStageMonitor:
+        adapter = self
+
+        class BakeProgressMonitor:
+            def __init__(self) -> None:
+                self.last_signature: tuple[object, ...] | None = None
+                self.finished = False
+
+            def start(self, stage_name: str, report: ExportReport, snapshot: ReportSnapshot) -> None:
+                namespace = get_export_runtime_namespace()
+                namespace.autobake_stage_monitor = self
+                report.summary(
+                    'Auto Bake 2 session started. Progress will continue in the console and session log until the add-on returns to idle.'
+                )
+                self.poll(stage_name, report, snapshot)
+
+            def poll(self, stage_name: str, report: ExportReport, snapshot: ReportSnapshot) -> float | None:
+                if self.finished:
+                    return None
+                try:
+                    current = adapter._capture_progress_snapshot()
+                    signature = current.signature()
+                    if signature != self.last_signature:
+                        adapter._log_progress_snapshot(current)
+                        self.last_signature = signature
+
+                    if adapter._session_is_active(current):
+                        return 0.5
+
+                    report.summary('Auto Bake 2 session finished.')
+                    print_stage_summary(stage_name, report, snapshot)
+                    self.finished = True
+                    namespace = get_export_runtime_namespace()
+                    if getattr(namespace, 'autobake_stage_monitor', None) is self:
+                        namespace.autobake_stage_monitor = None
+                    return None
+                except Exception as error:
+                    report.error(f'Bake progress monitor failed: {error}')
+                    report.log_traceback()
+                    print_stage_summary(stage_name, report, snapshot)
+                    self.finished = True
+                    namespace = get_export_runtime_namespace()
+                    if getattr(namespace, 'autobake_stage_monitor', None) is self:
+                        namespace.autobake_stage_monitor = None
+                    return None
+
+        monitor = BakeProgressMonitor()
+
+        def start_monitor(stage_name: str, report: ExportReport, snapshot: ReportSnapshot) -> None:
+            monitor.start(stage_name, report, snapshot)
+            bpy.app.timers.register(
+                lambda: monitor.poll(stage_name, report, snapshot),
+                first_interval=0.5,
+            )
+
+        return AsyncStageMonitor(
+            on_start=start_monitor,
+            on_poll=monitor.poll,
+        )
 
     def ensure_bake_list(self, texture_size: int) -> bool:
         bake_list = getattr(self.scene, 'autobake_bake_list', None)
@@ -1261,10 +1485,6 @@ class AutoBake2Adapter:
             prepared_objects.append(object_)
             progress_bucket = (processed_count * progress_steps + total_objects - 1) // total_objects
             if progress_bucket != last_reported_bucket:
-                self.report.summary(
-                    f'Bake prep progress: {processed_count}/{total_objects} object(s) processed, '
-                    f'{total_objects - processed_count} remaining.'
-                )
                 last_reported_bucket = progress_bucket
         return prepared_objects
 
@@ -1294,37 +1514,39 @@ class AutoBake2Adapter:
             self.report.warn(f'Auto Bake 2 session setup failed: {error}')
             return False
 
-    def start_session(self) -> bool:
+    def start_session(self) -> AsyncStageMonitor | None:
         if not self.can_run():
-            return False
+            return None
 
         selected_objects = self._select_objects(self.prepared_objects) if self.prepared_objects else list(bpy.context.selected_objects)
         if not selected_objects:
             message = 'Auto Bake 2 start operator failed: no visible mesh objects were available for selection.'
             self.status.errors.append(message)
             self.report.warn(message)
-            return False
+            return None
 
         try:
             bpy.ops.autobake.start(rebake=False, index=0, object=False, start_none=False)
             self.status.used = True
-            self.report.summary(
-                'Auto Bake 2 start operator completed. The bake session continues asynchronously in the add-on.'
-            )
+            return self.create_progress_monitor()
         except Exception as error:
             self.status.errors.append(str(error))
             self.report.warn(f'Auto Bake 2 start operator failed: {error}')
-            return False
-        return True
+            return None
 
-    def verify(self, source_objects: list[object], target_objects: list[object], texture_size: int) -> None:
+    def verify(
+        self,
+        source_objects: list[object],
+        target_objects: list[object],
+        texture_size: int,
+    ) -> AsyncStageMonitor | None:
         if not self.can_run():
             self.report.warn('Auto Bake 2 verification was requested, but the add-on is not available.')
-            return
+            return None
         if not self.configure_session(source_objects, target_objects, texture_size):
             self.report.warn('Auto Bake 2 verification could not configure a bake session.')
-            return
-        self.start_session()
+            return None
+        return self.start_session()
 
 
 def export_quality_level(
@@ -1530,6 +1752,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
 
         def inspect_stage() -> None:
             source_collection, package_name, display_name = resolve_source_collection(config, report)
+            configure_cycles_gpu_render(report)
             mesh_objects = validate_scene(source_collection, report)
             assert blend_path is not None
             paths = build_output_paths(blend_path, package_name, config)
@@ -1590,8 +1813,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             mesh_objects = stage_state['mesh_objects']
             bake_required_materials = stage_state['bake_required_materials']
             if config.verify_autobake_adapter:
-                autobake.verify(mesh_objects[:1], mesh_objects[:1], config.high_texture_size)
-                return
+                return autobake.verify(mesh_objects[:1], mesh_objects[:1], config.high_texture_size)
             if bake_required_materials and config.bake_behavior in {'auto', 'autobake'}:
                 report.summary(
                     'Some materials are procedural or incomplete. The script will select all visible mesh objects '
@@ -1599,8 +1821,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                 )
                 if not autobake.configure_session(mesh_objects, mesh_objects, config.high_texture_size):
                     return
-                autobake.start_session()
-                return
+                return autobake.start_session()
             if bake_required_materials and config.bake_behavior == 'manual':
                 report.warn(
                     'Some materials need baking. Manual or direct Blender bake fallback is still required for these node graphs.'
@@ -1624,7 +1845,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             finally:
                 shutil.rmtree(staging_dir, ignore_errors=True)
 
-        def package_stage() -> None:
+                self.report.system(f'Bake progress: {"; ".join(details)}')
             paths = stage_state['paths']
             validate_packaging_inputs(paths)
             render_thumbnail(paths, config.thumbnail_size, report)
@@ -1666,7 +1887,8 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             run_stage('analyze', report, analyze_stage)
 
         if 'bake' in requested_stages:
-            run_stage('bake', report, bake_stage)
+            bake_stage_state = StageRunState()
+            run_stage('bake', report, bake_stage, state=bake_stage_state)
 
         for export_stage_name in ('export-high', 'export-medium', 'export-low'):
             if export_stage_name in requested_stages:
