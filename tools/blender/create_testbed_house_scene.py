@@ -14,7 +14,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.1.0'
+SCRIPT_VERSION = '0.1.1'
 PREFIX = 'TESTBED_'
 COLLECTION_NAME = 'TestbedHouseSource'
 CAMERA_NAME = f'{PREFIX}Camera'
@@ -566,11 +566,11 @@ def create_furniture(materials: dict[str, object]) -> None:
     create_box('Sofa_LOD2', (2.3, 0.9, 0.84), (-3.1, -1.4, 0.55), materials['fabric'])
     create_box('CoffeeTable', (1.4, 0.8, 0.45), (-1.0, -1.3, 0.28), materials['wood'])
     create_box('Bed', (2.4, 1.8, 0.8), (-3.1, 2.5, 0.48), materials['fabric'])
-    create_box('Wardrobe', (1.6, 0.65, 2.2), (-5.0, 1.9, 1.1), materials['wood'], apply_transforms=False)
+    create_box('Wardrobe', (1.6, 0.65, 2.2), (-5.0, 1.9, 1.1), materials['wood'], apply_scale=False)
     create_cylinder('Toilet', 0.36, 0.74, (4.2, -3.0, 0.38), materials['ceramic'], vertices=12)
     shower = create_box('Shower', (1.45, 1.45, 2.2), (4.3, -0.25, 1.15), materials['glass'])
     remove_uv_layers(shower)
-    create_cylinder('LivingLamp', 0.22, 1.7, (-0.3, -3.3, 0.9), materials['metal'], vertices=10, apply_transforms=False)
+    create_cylinder('LivingLamp', 0.22, 1.7, (-0.3, -3.3, 0.9), materials['metal'], vertices=10, apply_scale=False)
 
 
 def create_control_target(collection: object) -> object:
@@ -674,7 +674,7 @@ def create_box(
     location: tuple[float, float, float],
     material: object,
     rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    apply_transforms: bool = True,
+    apply_scale: bool = True,
 ) -> object:
     bpy.ops.mesh.primitive_cube_add(location=location, rotation=rotation)
     object_ = bpy.context.active_object
@@ -682,8 +682,8 @@ def create_box(
     object_.data.name = f'{PREFIX}{name}_Mesh'
     object_.scale = (size[0] * 0.5, size[1] * 0.5, size[2] * 0.5)
     assign_material(object_, material)
-    if apply_transforms:
-        apply_object_transforms(object_)
+    if apply_scale:
+        apply_object_scale(object_)
     return object_
 
 
@@ -695,7 +695,7 @@ def create_cylinder(
     material: object,
     vertices: int = 8,
     rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    apply_transforms: bool = True,
+    apply_scale: bool = True,
 ) -> object:
     bpy.ops.mesh.primitive_cylinder_add(
         vertices=vertices,
@@ -708,8 +708,8 @@ def create_cylinder(
     object_.name = name
     object_.data.name = f'{PREFIX}{name}_Mesh'
     assign_material(object_, material)
-    if apply_transforms:
-        apply_object_transforms(object_)
+    if apply_scale:
+        apply_object_scale(object_)
     return object_
 
 
@@ -732,9 +732,9 @@ def link_object_to_collection(object_: object, collection: object) -> None:
             current_collection.objects.unlink(object_)
 
 
-def apply_object_transforms(object_: object) -> None:
+def apply_object_scale(object_: object) -> None:
     with active_object(object_):
-        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
 
 
 def orient_towards(object_: object, target: Vector) -> None:

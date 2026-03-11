@@ -23,7 +23,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.3.1'
+SCRIPT_VERSION = '0.3.2'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -414,16 +414,10 @@ def validate_scene(source_collection: object, report: ExportReport) -> list[obje
         if object_.library is not None:
             report.warn(f'Object "{object_.name}" is linked from an external library; export will use the evaluated object state.')
 
-        unapplied_transforms: list[str] = []
-        if any(abs(value) > 0.0001 for value in object_.location[:]):
-            unapplied_transforms.append('location')
-        if any(abs(value) > 0.0001 for value in object_.rotation_euler[:]):
-            unapplied_transforms.append('rotation')
         if any(abs(value - 1.0) > 0.0001 for value in object_.scale[:]):
-            unapplied_transforms.append('scale')
-        if unapplied_transforms:
             report.warn(
-                f'Object "{object_.name}" has unapplied transforms: {", ".join(unapplied_transforms)}.'
+                f'Object "{object_.name}" has unapplied scale. '
+                'Apply scale before export so generated LODs and bounds stay consistent.'
             )
 
         mesh = object_.data

@@ -19,7 +19,7 @@ To standardize assets for the Three.js test project, export all collections to G
 The canonical usage guide for the Blender export script lives in [../tools/README.md](../tools/README.md). Use that document for the current Scripting workspace workflow, stage commands, and logging behavior.
 
 1. Scene cleanup
-   - Apply transforms (Ctrl+A) to all meshes (Location, Rotation, Scale).
+   - Apply scale (Ctrl+A -> Scale) to all meshes.
    - Remove non-renderable helper objects and cameras.
    - Ensure correct orientation (Y forward / Z up), triangulate if preferred.
 2. Materials → PBR maps
