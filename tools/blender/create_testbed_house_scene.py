@@ -107,8 +107,8 @@ def build_material_library() -> dict[str, object]:
             metallic_scale=0.7,
             roughness_floor=0.28,
         ),
-        'roof': create_partial_material(
-            f'{PREFIX}RoofPartial',
+        'ceiling': create_partial_material(
+            f'{PREFIX}CeilingPartial',
             ((0.55, 0.18, 0.12), (0.42, 0.11, 0.08)),
             noise_scale=12.0,
         ),
@@ -552,48 +552,25 @@ def new_material(name: str) -> object:
 
 def create_house_structure(materials: dict[str, object]) -> None:
     create_box('Floor', (12.0, 10.0, 0.2), (0.0, 0.0, 0.1), materials['wood'])
-    create_box('Ceiling', (12.0, 4.6, 0.18), (0.0, 2.7, 3.2), materials['wall'])
-    create_box('Roof', (12.6, 5.4, 0.22), (0.0, 3.0, 4.2), materials['roof'], rotation=(0.14, 0.0, 0.0))
+    create_box('Ceiling', (12.0, 4.6, 0.18), (0.0, 2.7, 3.2), materials['ceiling'])
     create_box('LeftWall', (0.22, 10.0, 3.0), (-5.9, 0.0, 1.6), materials['wall'])
     create_box('RightWall', (0.22, 10.0, 3.0), (5.9, 0.0, 1.6), materials['wall'])
     create_box('BackWall', (12.0, 0.22, 3.0), (0.0, 4.9, 1.6), materials['wall'])
-    create_box('BedroomWall', (9.0, 0.18, 2.8), (-1.5, 0.8, 1.5), materials['wall'])
-    create_box('BathroomWall', (4.6, 0.18, 2.6), (3.6, -1.7, 1.4), materials['wall'])
-    create_box('HallDivider', (0.18, 4.8, 2.8), (1.0, -1.6, 1.5), materials['wall'])
-    create_box('FrontDoor', (1.2, 0.1, 2.2), (-3.9, -4.5, 1.2), materials['wood'], rotation=(0.0, 0.0, 0.1))
     create_box('WindowLiving', (0.12, 2.2, 1.1), (-5.8, -1.2, 1.7), materials['glass'])
-    create_box('WindowBedroom', (0.12, 2.1, 1.0), (5.8, 2.2, 1.7), materials['glass'])
-    create_box('WindowBathroom', (1.8, 0.12, 0.9), (3.7, 4.8, 1.8), materials['glass'])
 
 
 def create_furniture(materials: dict[str, object]) -> None:
     create_box('KitchenCounter', (2.8, 0.9, 0.9), (-4.0, 3.7, 0.55), materials['stone'])
-    create_box('DiningTable', (1.8, 1.2, 0.8), (-1.7, 2.3, 0.52), materials['wood'])
-    create_box('DiningChairLeft', (0.6, 0.6, 1.0), (-2.6, 2.3, 0.5), materials['wood'])
-    create_box('DiningChairRight', (0.6, 0.6, 1.0), (-0.8, 2.3, 0.5), materials['wood'])
     create_box('Sofa_LOD0', (2.6, 1.0, 1.0), (-3.1, -1.4, 0.55), materials['fabric'])
     create_box('Sofa_LOD1', (2.45, 0.95, 0.92), (-3.1, -1.4, 0.55), materials['fabric'])
     create_box('Sofa_LOD2', (2.3, 0.9, 0.84), (-3.1, -1.4, 0.55), materials['fabric'])
     create_box('CoffeeTable', (1.4, 0.8, 0.45), (-1.0, -1.3, 0.28), materials['wood'])
     create_box('Bed', (2.4, 1.8, 0.8), (-3.1, 2.5, 0.48), materials['fabric'])
-    create_box('Wardrobe', (1.6, 0.65, 2.2), (-5.0, 1.9, 1.1), materials['wood'])
-    create_box('Desk', (1.7, 0.8, 0.78), (3.8, 0.2, 0.5), materials['wood'])
-    create_box('Bookshelf', (1.4, 0.45, 2.1), (5.0, 1.8, 1.05), materials['wood'])
+    create_box('Wardrobe', (1.6, 0.65, 2.2), (-5.0, 1.9, 1.1), materials['wood'], apply_transforms=False)
     create_cylinder('Toilet', 0.36, 0.74, (4.2, -3.0, 0.38), materials['ceramic'], vertices=12)
-    create_box('Sink', (0.85, 0.55, 0.95), (2.8, -3.1, 0.52), materials['ceramic'])
     shower = create_box('Shower', (1.45, 1.45, 2.2), (4.3, -0.25, 1.15), materials['glass'])
     remove_uv_layers(shower)
-    create_cylinder('LivingLamp', 0.22, 1.7, (-0.3, -3.3, 0.9), materials['metal'], vertices=10)
-    create_cylinder(
-        'BedroomLamp',
-        0.18,
-        1.55,
-        (-4.9, 3.6, 0.82),
-        materials['metal'],
-        vertices=10,
-        rotation=(0.0, 0.08, 0.12),
-        apply_transforms=False,
-    )
+    create_cylinder('LivingLamp', 0.22, 1.7, (-0.3, -3.3, 0.9), materials['metal'], vertices=10, apply_transforms=False)
 
 
 def create_control_target(collection: object) -> object:
