@@ -20,7 +20,7 @@
 - The available stages are `inspect`, `analyze`, `bake`, `export-high`, `export-medium`, `export-low`, and `package`.
 - The `inspect` stage resolves the collection, validates scene prerequisites, creates the output layout, and derives manifest camera metadata.
 - The `analyze` stage inspects materials, textures, LOD bundles, and Auto Bake 2 availability without exporting assets.
-- The `bake` stage runs only bake preparation or Auto Bake 2 verification so bake warnings can be copied separately.
+- The `bake` stage runs Auto Bake 2 when needed, enables Final Material, Remove Nodes, Final Object, and Reuse Elements, then completes the session through Auto Bake 2's Confirm flow with Swap Object enabled.
 - The three `export-*` stages each write a single GLB variant.
 - The `package` stage renders the thumbnail, copies the HDR environment, writes `manifest.json`, writes the text report, and prints the `collections-index.json` snippet.
 - Later stages still recompute the in-memory scene context they depend on, but they avoid running unrelated export steps and print a per-stage warning/error summary.

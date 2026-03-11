@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.3.6'
+SCRIPT_VERSION = '0.3.7'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -53,7 +53,7 @@ STAGE_ORDER = (
 STAGE_DESCRIPTIONS = {
     'inspect': 'Resolve the source collection, validate scene prerequisites, create the output layout, and derive initial camera metadata.',
     'analyze': 'Inspect mesh LOD bundles, analyze materials and textures, and detect Auto Bake 2 availability without exporting assets.',
-    'bake': 'Run only the bake preparation or Auto Bake 2 verification path so bake warnings can be reviewed separately.',
+    'bake': 'Run Auto Bake 2 when needed, then complete the session through the add-on confirm flow.',
     'export-high': 'Export only the high-detail GLB package using LOD0 or the best available source mesh.',
     'export-medium': 'Export only the medium-detail GLB package using LOD1 or a generated decimated mesh.',
     'export-low': 'Export only the low-detail GLB package using LOD2 or a generated decimated mesh.',
@@ -1295,6 +1295,8 @@ class AutoBake2Adapter:
         self.module = self._load_module()
         self.status = self._detect_status()
         self.prepared_objects: list[object] = []
+        self.previous_material_settings: dict[str, object] = {}
+        self.previous_preference_settings: dict[str, object] = {}
 
     def _load_module(self) -> object | None:
         try:
@@ -1462,6 +1464,7 @@ class AutoBake2Adapter:
                         return 0.5
 
                     report.summary('Auto Bake 2 session finished.')
+                    adapter.finalize_bake_session()
                     print_stage_summary(stage_name, report, snapshot)
                     self.finished = True
                     namespace = get_export_runtime_namespace()
@@ -1555,7 +1558,94 @@ class AutoBake2Adapter:
                 last_reported_bucket = progress_bucket
         return prepared_objects
 
-    def configure_session(self, source_objects: list[object], target_objects: list[object], texture_size: int) -> bool:
+    def _get_autobake_preferences(self) -> object | None:
+        if self.module is None:
+            return None
+        preferences = bpy.context.preferences
+        addon = preferences.addons.get(self.module.__name__)
+        if addon is not None:
+            return addon.preferences
+        addon = preferences.addons.get('auto_bake')
+        if addon is not None:
+            return addon.preferences
+        return None
+
+    def _configure_material_application(self) -> None:
+        properties = getattr(self.scene, 'autobake_properties', None)
+        if properties is None:
+            raise RuntimeError('Auto Bake 2 scene properties are unavailable.')
+
+        setting_names = (
+            'ab_final_material',
+            'ab_remove_nodes',
+            'ab_final_object',
+            'reuse_elements',
+            'ab_apply_textures',
+            'ab_final_shader',
+            'ab_shared_textures',
+        )
+        self.previous_material_settings = {
+            name: getattr(properties, name)
+            for name in setting_names
+            if hasattr(properties, name)
+        }
+        properties.ab_final_material = True
+        properties.ab_remove_nodes = True
+        properties.ab_final_object = True
+        properties.reuse_elements = True
+        properties.ab_apply_textures = 'Last'
+        properties.ab_final_shader = 'ShaderNodeBsdfPrincipled'
+        properties.ab_shared_textures = False
+
+    def _restore_material_application(self) -> None:
+        if not self.previous_material_settings:
+            return
+        properties = getattr(self.scene, 'autobake_properties', None)
+        if properties is None:
+            self.previous_material_settings = {}
+            return
+        for name, value in self.previous_material_settings.items():
+            if hasattr(properties, name):
+                setattr(properties, name, value)
+        self.previous_material_settings = {}
+
+        preferences = self._get_autobake_preferences()
+        if preferences is not None:
+            for name, value in self.previous_preference_settings.items():
+                if hasattr(preferences, name):
+                    setattr(preferences, name, value)
+        self.previous_preference_settings = {}
+
+    def _confirm_bake_results(self) -> bool:
+        preferences = self._get_autobake_preferences()
+        if preferences is not None and hasattr(preferences, 'ab_swap_object'):
+            self.previous_preference_settings = {'ab_swap_object': preferences.ab_swap_object}
+            preferences.ab_swap_object = 'Ask'
+
+        result = bpy.ops.autobake.confirm('EXEC_DEFAULT', do_swap=True, swap_object='Baked')
+        if 'FINISHED' not in result:
+            self.report.warn(
+                f'Auto Bake 2 confirm operator did not finish successfully: {sorted(result)}'
+            )
+            return False
+
+        self.report.summary(
+            'Auto Bake 2 confirmed the bake results and swapped baked objects with their generated final objects.'
+        )
+        return True
+
+    def finalize_bake_session(self) -> None:
+        try:
+            self._confirm_bake_results()
+        finally:
+            self._restore_material_application()
+
+    def configure_session(
+        self,
+        source_objects: list[object],
+        target_objects: list[object],
+        texture_size: int,
+    ) -> bool:
         if not self.can_run():
             return False
 
@@ -1569,14 +1659,16 @@ class AutoBake2Adapter:
 
         try:
             self.scene.autobake_properties.ab_selected_to_active = False
+            self._configure_material_application()
             self.prepared_objects = self._select_objects(prepared_objects)
             self.status.used = True
             self.report.summary(
-                f'Auto Bake 2 prepared {len(self.prepared_objects)} selected object(s) for baking.'
+                f'Auto Bake 2 prepared {len(self.prepared_objects)} selected object(s) for baking and enabled Final Material, Remove Nodes, Final Object, and Reuse Elements.'
             )
             return True
         except Exception as error:
             self.prepared_objects = []
+            self._restore_material_application()
             self.status.errors.append(str(error))
             self.report.warn(f'Auto Bake 2 session setup failed: {error}')
             return False
@@ -1597,6 +1689,7 @@ class AutoBake2Adapter:
             self.status.used = True
             return self.create_progress_monitor()
         except Exception as error:
+            self._restore_material_application()
             self.status.errors.append(str(error))
             self.report.warn(f'Auto Bake 2 start operator failed: {error}')
             return None
@@ -1884,7 +1977,9 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             if bake_required_materials and config.bake_behavior in {'auto', 'autobake'}:
                 report.summary(
                     'Some materials are procedural or incomplete. The script will select all visible mesh objects '
-                    'and launch Auto Bake 2 with an auto-seeded bake list when needed.'
+                    'and launch Auto Bake 2 with an auto-seeded bake list when needed. The script enables Final Material, '
+                    'Remove Nodes, Final Object, and Reuse Elements, then finishes by running Auto Bake 2\'s Confirm flow '
+                    'with Swap Object enabled.'
                 )
                 if not autobake.configure_session(mesh_objects, mesh_objects, config.high_texture_size):
                     return
