@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.3.3'
+SCRIPT_VERSION = '0.3.5'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -1363,7 +1363,7 @@ class AutoBake2Adapter:
             details.append(f'active_object="{snapshot.active_object}"')
         if snapshot.active_item is not None:
             details.append(f'active_item="{snapshot.active_item}"')
-        self.report.info(f'Bake progress: {"; ".join(details)}')
+        self.report.system(f'Bake progress: {"; ".join(details)}')
 
     def create_progress_monitor(self) -> AsyncStageMonitor:
         adapter = self
@@ -1845,7 +1845,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             finally:
                 shutil.rmtree(staging_dir, ignore_errors=True)
 
-                self.report.system(f'Bake progress: {"; ".join(details)}')
+        def package_stage() -> None:
             paths = stage_state['paths']
             validate_packaging_inputs(paths)
             render_thumbnail(paths, config.thumbnail_size, report)
