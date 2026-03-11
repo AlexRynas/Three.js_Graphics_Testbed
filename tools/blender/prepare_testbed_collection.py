@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.3.5'
+SCRIPT_VERSION = '0.3.6'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -205,6 +205,20 @@ class ExportReport:
                 handle.write(message)
                 handle.write('\n')
 
+    def capture_external_line(self, message: str) -> None:
+        warning_match = re.match(r'^(?:WARNING:\s+|\d{2}:\d{2}:\d{2}\s+\|\s+WARNING:\s+)(.+)$', message)
+        if warning_match is not None:
+            self.warnings.append(warning_match.group(1).strip())
+
+        error_match = re.match(
+            r'^(?:ERROR:\s+|CRITICAL:\s+|\d{2}:\d{2}:\d{2}\s+\|\s+(?:ERROR|CRITICAL):\s+)(.+)$',
+            message,
+        )
+        if error_match is not None:
+            self.errors.append(error_match.group(1).strip())
+
+        self._emit(message)
+
     def summary(self, message: str) -> None:
         print(message)
         self._emit(message)
@@ -232,6 +246,57 @@ class ExportReport:
     def error(self, message: str) -> None:
         self.errors.append(message)
         self._emit(f'ERROR: {message}')
+
+
+class _ReportLogStream:
+    def __init__(self, report: ExportReport) -> None:
+        self.report = report
+        self._buffer = ''
+
+    def write(self, message: str) -> int:
+        if not message:
+            return 0
+
+        self._buffer += message
+        while '\n' in self._buffer:
+            line, self._buffer = self._buffer.split('\n', 1)
+            self.report.capture_external_line(line.rstrip('\r'))
+        return len(message)
+
+    def flush(self) -> None:
+        if self._buffer:
+            self.report.capture_external_line(self._buffer.rstrip('\r'))
+            self._buffer = ''
+
+
+@contextmanager
+def capture_gltf_export_diagnostics(report: ExportReport) -> object:
+    stream = _ReportLogStream(report)
+    original_stdout = sys.stdout
+    original_stderr = sys.stderr
+    debug_module = None
+    original_messages = None
+
+    try:
+        sys.stdout = stream
+        sys.stderr = stream
+
+        try:
+            debug_module = importlib.import_module('io_scene_gltf2.io.com.debug')
+        except ImportError:
+            debug_module = None
+
+        if debug_module is not None:
+            original_messages = debug_module.Log.messages
+            debug_module.Log.messages = lambda self: []
+
+        yield
+    finally:
+        if debug_module is not None and original_messages is not None:
+            debug_module.Log.messages = original_messages
+        stream.flush()
+        sys.stdout = original_stdout
+        sys.stderr = original_stderr
 
 
 def print_stage_catalog() -> None:
@@ -1078,10 +1143,12 @@ def export_glb(filepath: Path, report: ExportReport) -> None:
     }
 
     try:
-        bpy.ops.export_scene.gltf(**base_kwargs, **draco_kwargs)
+        with capture_gltf_export_diagnostics(report):
+            bpy.ops.export_scene.gltf(**base_kwargs, **draco_kwargs)
     except TypeError as error:
         report.warn(f'Draco export settings were not accepted by Blender; retrying without Draco. Detail: {error}')
-        bpy.ops.export_scene.gltf(**base_kwargs)
+        with capture_gltf_export_diagnostics(report):
+            bpy.ops.export_scene.gltf(**base_kwargs)
 
 
 def build_quality_objects(
