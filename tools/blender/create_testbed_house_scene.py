@@ -564,7 +564,6 @@ def create_furniture(materials: dict[str, object]) -> None:
     create_box('Sofa_LOD0', (2.6, 1.0, 1.0), (-3.1, -1.4, 0.55), materials['fabric'])
     create_box('Sofa_LOD1', (2.45, 0.95, 0.92), (-3.1, -1.4, 0.55), materials['fabric'])
     create_box('Sofa_LOD2', (2.3, 0.9, 0.84), (-3.1, -1.4, 0.55), materials['fabric'])
-    create_box('CoffeeTable', (1.4, 0.8, 0.45), (-1.0, -1.3, 0.28), materials['wood'])
     create_box('Bed', (2.4, 1.8, 0.8), (-3.1, 2.5, 0.48), materials['fabric'])
     create_box('Wardrobe', (1.6, 0.65, 2.2), (-5.0, 1.9, 1.1), materials['wood'], apply_scale=False)
     create_cylinder('Toilet', 0.36, 0.74, (4.2, -3.0, 0.38), materials['ceramic'], vertices=12)
