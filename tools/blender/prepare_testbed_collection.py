@@ -1243,7 +1243,7 @@ class AutoBake2Adapter:
         return selected_objects
 
     def _prepare_objects(self, source_objects: list[object], target_objects: list[object]) -> list[object]:
-        prepared_objects: list[object] = []
+        eligible_objects: list[object] = []
         seen_names: set[str] = set()
         for object_ in [*target_objects, *source_objects]:
             if object_ is None or getattr(object_, 'type', None) != 'MESH':
@@ -1251,7 +1251,21 @@ class AutoBake2Adapter:
             if object_.name in seen_names or object_.hide_get() or object_.name not in self.scene.objects:
                 continue
             seen_names.add(object_.name)
+            eligible_objects.append(object_)
+
+        prepared_objects: list[object] = []
+        total_objects = len(eligible_objects)
+        progress_steps = min(total_objects, 20)
+        last_reported_bucket = 0
+        for processed_count, object_ in enumerate(eligible_objects, start=1):
             prepared_objects.append(object_)
+            progress_bucket = (processed_count * progress_steps + total_objects - 1) // total_objects
+            if progress_bucket != last_reported_bucket:
+                self.report.summary(
+                    f'Bake prep progress: {processed_count}/{total_objects} object(s) processed, '
+                    f'{total_objects - processed_count} remaining.'
+                )
+                last_reported_bucket = progress_bucket
         return prepared_objects
 
     def configure_session(self, source_objects: list[object], target_objects: list[object], texture_size: int) -> bool:
