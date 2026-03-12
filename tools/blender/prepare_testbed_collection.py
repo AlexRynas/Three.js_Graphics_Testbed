@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.4.0'
+SCRIPT_VERSION = '0.4.1'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -459,6 +459,11 @@ def slugify(value: str) -> str:
     return normalized or 'collection'
 
 
+def sanitize_package_name(value: str) -> str:
+    normalized = re.sub(r'[^a-zA-Z0-9]+', '_', value.strip()).strip('_')
+    return normalized or 'Collection'
+
+
 def title_case_slug(value: str) -> str:
     return value.replace('_', ' ').replace('-', ' ').strip().title()
 
@@ -516,9 +521,9 @@ def resolve_source_collection(config: ExportConfig, report: ExportReport) -> tup
             scene.collection,
         )
 
-    package_name = slugify(config.collection_name_override or source_collection.name or Path(bpy.data.filepath).stem)
-    display_name = config.display_name_override or title_case_slug(package_name)
-    return source_collection, package_name, display_name
+    collection_id = config.collection_name_override or source_collection.name or Path(bpy.data.filepath).stem
+    display_name = config.display_name_override or collection_id
+    return source_collection, collection_id, display_name
 
 
 def configure_cycles_gpu_render(report: ExportReport) -> None:
@@ -1778,7 +1783,7 @@ def export_quality_level(
 
 
 def build_manifest(
-    package_name: str,
+    collection_id: str,
     display_name: str,
     paths: ExportPaths,
     initial_camera_position: list[float],
@@ -1786,7 +1791,7 @@ def build_manifest(
     environment_path: str | None,
 ) -> dict[str, object]:
     manifest: dict[str, object] = {
-        'name': package_name,
+        'name': collection_id,
         'displayName': display_name,
         'thumbnail': relative_manifest_path(paths.thumbnail_path, paths.manifest_path),
         'lods': [
@@ -1809,18 +1814,18 @@ def write_manifest(manifest: dict[str, object], paths: ExportPaths, report: Expo
     report.summary(f'Wrote manifest to {paths.manifest_path}')
 
 
-def build_index_snippet(package_name: str, display_name: str) -> str:
+def build_index_snippet(collection_id: str, display_name: str, paths: ExportPaths) -> str:
     snippet = {
-        'id': package_name,
+        'id': collection_id,
         'displayName': display_name,
-        'manifestUrl': f'collections/{package_name}/manifest.json',
+        'manifestUrl': f'collections/{paths.package_root.name}/manifest.json',
     }
     return json.dumps(snippet, indent=2)
 
 
 def write_report_file(
     paths: ExportPaths,
-    package_name: str,
+    collection_id: str,
     display_name: str,
     manifest: dict[str, object],
     index_snippet: str,
@@ -1831,7 +1836,7 @@ def write_report_file(
     lines = [
         'Three.js Graphics Testbed Blender export report',
         f'Script version: {SCRIPT_VERSION}',
-        f'Collection id: {package_name}',
+        f'Collection id: {collection_id}',
         f'Display name: {display_name}',
         f'Manifest path: {paths.manifest_path}',
         f'Executed stages: {", ".join(executed_stages)}',
@@ -1921,6 +1926,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
     try:
         stage_state: dict[str, object] = {
             'source_collection': None,
+            'collection_id': None,
             'package_name': None,
             'display_name': None,
             'mesh_objects': None,
@@ -1948,23 +1954,25 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             if stage_state['mesh_objects'] is not None:
                 return
 
-            source_collection, package_name, display_name = resolve_source_collection(config, report)
+            source_collection, collection_id, display_name = resolve_source_collection(config, report)
             mesh_objects = validate_scene(
                 source_collection,
                 report,
                 emit_warnings=emit_warnings,
             )
             assert blend_path is not None
+            package_name = sanitize_package_name(collection_id)
             paths = build_output_paths(blend_path, package_name, config)
             create_package_layout(paths)
             initial_camera_position, initial_control_target = derive_initial_view(
                 mesh_objects,
                 source_collection,
-                package_name,
+                collection_id,
             )
             stage_state.update(
                 {
                     'source_collection': source_collection,
+                    'collection_id': collection_id,
                     'package_name': package_name,
                     'display_name': display_name,
                     'mesh_objects': mesh_objects,
@@ -2022,6 +2030,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             stage_state.update(
                 {
                     'source_collection': None,
+                    'collection_id': None,
                     'package_name': None,
                     'display_name': None,
                     'mesh_objects': None,
@@ -2032,11 +2041,16 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             )
             ensure_scene_context(emit_warnings=True, require_cycles=True)
             source_collection = stage_state['source_collection']
+            collection_id = stage_state['collection_id']
             package_name = stage_state['package_name']
             mesh_objects = stage_state['mesh_objects']
-            report.info(f'Using source collection "{source_collection.name}" and package id "{package_name}".')
+            report.info(
+                f'Using source collection "{source_collection.name}", collection id "{collection_id}", '
+                f'and package slug "{package_name}".'
+            )
             report.summary(
-                f'Inspect summary: collection="{source_collection.name}", visible meshes={len(mesh_objects)}, package id="{package_name}".'
+                f'Inspect summary: collection="{source_collection.name}", visible meshes={len(mesh_objects)}, '
+                f'collection id="{collection_id}", package slug="{package_name}".'
             )
 
         def analyze_stage() -> None:
@@ -2108,7 +2122,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             environment_source = detect_environment_image(report)
             environment_manifest_path = copy_environment_image(environment_source, paths, report)
             manifest = build_manifest(
-                stage_state['package_name'],
+                stage_state['collection_id'],
                 stage_state['display_name'],
                 paths,
                 stage_state['initial_camera_position'],
@@ -2116,12 +2130,16 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                 environment_manifest_path,
             )
             write_manifest(manifest, paths, report)
-            index_snippet = build_index_snippet(stage_state['package_name'], stage_state['display_name'])
+            index_snippet = build_index_snippet(
+                stage_state['collection_id'],
+                stage_state['display_name'],
+                paths,
+            )
             if config.write_report:
                 autobake_status = stage_state['autobake'].status if stage_state['autobake'] is not None else AutoBake2Adapter(report).status
                 write_report_file(
                     paths,
-                    stage_state['package_name'],
+                    stage_state['collection_id'],
                     stage_state['display_name'],
                     manifest,
                     index_snippet,
@@ -2156,6 +2174,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             'success': True,
             'requested_stages': requested_stages,
             'report': report,
+            'collection_id': stage_state['collection_id'],
             'package_name': stage_state['package_name'],
             'display_name': stage_state['display_name'],
             'paths': stage_state['paths'],
@@ -2171,6 +2190,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             'success': False,
             'requested_stages': requested_stages,
             'report': report,
+            'collection_id': None,
             'package_name': None,
             'display_name': None,
             'paths': None,
