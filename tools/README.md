@@ -21,7 +21,7 @@
 - The available stages are `inspect`, `repair`, `bake`, `export-high`, `export-medium`, `export-low`, and `package`.
 - The `inspect` stage resolves the collection, validates scene prerequisites, creates the output layout, derives manifest camera metadata, and inspects materials, textures, LOD bundles, and Auto Bake 2 availability.
 - The `repair` stage automatically fixes the warnings surfaced by `inspect` by making linked assets local when possible, applying scale, generating UV maps, assigning default materials, and enabling World nodes.
-- The `bake` stage runs Auto Bake 2 when needed, enables Final Material, Remove Nodes, Final Object, and Reuse Elements, then completes the session through Auto Bake 2's Confirm flow with Swap Object enabled.
+- The `bake` stage runs Auto Bake 2 when needed, enables Final Material, Remove Nodes, Final Object, and Reuse Elements, completes the session through Auto Bake 2's Confirm flow with Swap Object enabled, and then saves any dirty baked images to disk automatically.
 - The three `export-*` stages each write a single GLB variant.
 - The `package` stage renders the thumbnail, copies the HDR environment, writes `manifest.json`, writes the text report, and prints the `collections-index.json` snippet.
 - Stages are isolated. Running `export-*`, `bake`, or `package` no longer emits separate `inspect` or `repair` stage headers automatically.
@@ -40,6 +40,7 @@ run_testbed_export_stage('package')
 ```
 
 - After each command, the console prints the path to the detailed log file.
+- After the `bake` stage finishes, the script saves newly baked dirty images immediately so later `export-*` stages can reuse them without requiring Blender's close-window image save prompt.
 - If you need the structured result object, call `get_last_testbed_export_result()` or inspect `testbed_export.last_result`.
 - If you explicitly want the helper to return the result object in the console, pass `echo_result=True`.
 - If you want validation, material diagnostics, and automatic warning repair in the log, run `inspect` and `repair` explicitly before `bake`, `export-*`, or `package`.

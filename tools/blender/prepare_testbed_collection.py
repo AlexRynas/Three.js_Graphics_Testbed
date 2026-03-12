@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.5.0'
+SCRIPT_VERSION = '0.5.1'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -478,6 +478,115 @@ def ensure_directory(path: Path) -> None:
 
 def relative_manifest_path(target_path: Path, manifest_path: Path) -> str:
     return target_path.relative_to(manifest_path.parent).as_posix()
+
+
+def collect_images_from_node_tree(
+    node_tree: object | None,
+    images: dict[int, object],
+    visited_trees: set[int] | None = None,
+) -> None:
+    if node_tree is None:
+        return
+
+    if visited_trees is None:
+        visited_trees = set()
+
+    tree_pointer = int(node_tree.as_pointer())
+    if tree_pointer in visited_trees:
+        return
+    visited_trees.add(tree_pointer)
+
+    for node in node_tree.nodes:
+        image = getattr(node, 'image', None)
+        if image is not None:
+            images[int(image.as_pointer())] = image
+
+        child_tree = getattr(node, 'node_tree', None)
+        if child_tree is not None:
+            collect_images_from_node_tree(child_tree, images, visited_trees)
+
+
+def collect_scene_material_images() -> list[object]:
+    images: dict[int, object] = {}
+    for object_ in bpy.context.scene.objects:
+        if getattr(object_, 'type', None) != 'MESH':
+            continue
+        for slot in object_.material_slots:
+            material = slot.material
+            if material is None or not getattr(material, 'use_nodes', False):
+                continue
+            collect_images_from_node_tree(material.node_tree, images)
+    return list(images.values())
+
+
+def infer_image_extension(image: object) -> str:
+    format_name = str(getattr(image, 'file_format', '') or '').upper()
+    extensions = {
+        'BMP': '.bmp',
+        'HDR': '.hdr',
+        'JPEG': '.jpg',
+        'JPEG2000': '.jp2',
+        'OPEN_EXR': '.exr',
+        'OPEN_EXR_MULTILAYER': '.exr',
+        'PNG': '.png',
+        'TARGA': '.tga',
+        'TARGA_RAW': '.tga',
+        'TIFF': '.tif',
+        'WEBP': '.webp',
+    }
+    return extensions.get(format_name, '.png')
+
+
+def resolve_image_save_path(image: object, fallback_dir: Path) -> Path:
+    for attribute_name in ('filepath_raw', 'filepath'):
+        raw_path = getattr(image, attribute_name, '')
+        if raw_path:
+            return Path(bpy.path.abspath(raw_path)).resolve()
+
+    ensure_directory(fallback_dir)
+    target_stem = sanitize_package_name(getattr(image, 'name', 'image'))
+    target_path = fallback_dir / f'{target_stem}{infer_image_extension(image)}'
+    suffix = 1
+    while target_path.exists():
+        target_path = fallback_dir / f'{target_stem}_{suffix}{infer_image_extension(image)}'
+        suffix += 1
+    return target_path
+
+
+def save_dirty_material_images(report: ExportReport) -> int:
+    if bpy.data.filepath:
+        fallback_dir = Path(bpy.data.filepath).resolve().parent / 'autobake-images'
+    else:
+        fallback_dir = Path(tempfile.gettempdir()) / 'threejs_testbed_autobake_images'
+
+    saved_images = 0
+    for image in collect_scene_material_images():
+        if not getattr(image, 'is_dirty', False):
+            continue
+        if getattr(image, 'type', '') in {'RENDER_RESULT', 'COMPOSITING'}:
+            continue
+
+        target_path = resolve_image_save_path(image, fallback_dir)
+        ensure_directory(target_path.parent)
+
+        if not getattr(image, 'filepath_raw', ''):
+            image.filepath_raw = str(target_path)
+        if not getattr(image, 'filepath', ''):
+            image.filepath = str(target_path)
+        if not getattr(image, 'file_format', ''):
+            image.file_format = 'PNG'
+
+        try:
+            image.save()
+            saved_images += 1
+        except RuntimeError as error:
+            report.warn(f'Failed to save baked image "{image.name}" to "{target_path}": {error}')
+
+    if saved_images:
+        report.summary(f'Saved {saved_images} dirty baked image(s) to disk.')
+    else:
+        report.summary('No dirty baked images needed saving after confirm.')
+    return saved_images
 
 
 def object_has_meshes(collection: object) -> bool:
@@ -1831,9 +1940,13 @@ class AutoBake2Adapter:
         )
         return True
 
+    def _save_baked_images(self) -> None:
+        save_dirty_material_images(self.report)
+
     def finalize_bake_session(self) -> None:
         try:
-            self._confirm_bake_results()
+            if self._confirm_bake_results():
+                self._save_baked_images()
         finally:
             self._restore_material_application()
 
