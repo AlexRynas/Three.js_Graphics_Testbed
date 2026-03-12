@@ -1,2 +1,7 @@
 [
+    {
+        "id": "TestbedHouseSource",
+        "displayName": "Testbed House Source",
+        "manifestUrl": "collections/TestbedHouseSource/manifest.json"
+    }
 ]
