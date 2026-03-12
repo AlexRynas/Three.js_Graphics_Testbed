@@ -55,3 +55,7 @@ Use Blender's actual executable for compile checks so the script is validated ag
 - `--background` avoids opening the UI.
 - `--factory-startup` reduces noise from user startup files or add-ons.
 - `py_compile.compile(..., doraise=True)` fails on syntax and compile-time errors.
+
+### Additional Resources
+
+- [Blender Resources](blender/Blender_Resources.md)
