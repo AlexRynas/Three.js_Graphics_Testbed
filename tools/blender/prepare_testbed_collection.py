@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.7.4'
+SCRIPT_VERSION = '0.8.0'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -40,6 +40,16 @@ IMAGE_NAME_HINTS = {
     'normal': ('normal', 'norm'),
     'orm': ('orm', 'occlusionroughnessmetallic', 'rma'),
     'roughness': ('roughness', 'rough'),
+}
+MATERIAL_STATUS_READY = 'ready'
+MATERIAL_STATUS_BAKE_REQUIRED = 'bake-required'
+OBJECT_STATUS_READY = 'ready'
+OBJECT_STATUS_BAKE_REQUIRED = 'bake-required'
+OBJECT_STATUS_REPAIR_REQUIRED = 'repair-required'
+SUPPORTED_IMAGE_TRACE_NODE_TYPES = {
+    'NORMAL_MAP',
+    'SEPARATE_COLOR',
+    'SEPARATE_RGB',
 }
 STAGE_ORDER = (
     'inspect',
@@ -133,7 +143,36 @@ class MaterialAnalysis:
     emissive_image: object | None = None
     orm_image: object | None = None
     missing: list[str] = field(default_factory=list)
+    unsupported_inputs: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class SocketTrace:
+    image: object | None = None
+    linked: bool = False
+    unsupported_nodes: list[str] = field(default_factory=list)
+
+    def merge(self, other: 'SocketTrace') -> None:
+        self.linked = self.linked or other.linked
+        if self.image is None and other.image is not None:
+            self.image = other.image
+        for node_label in other.unsupported_nodes:
+            if node_label not in self.unsupported_nodes:
+                self.unsupported_nodes.append(node_label)
+
+
+@dataclass(slots=True)
+class ObjectAnalysis:
+    object_: object
+    status: str
+    repair_issues: list[str] = field(default_factory=list)
+    bake_reasons: list[str] = field(default_factory=list)
+    material_names: list[str] = field(default_factory=list)
+
+    @property
+    def export_ready(self) -> bool:
+        return self.status == OBJECT_STATUS_READY
 
 
 @dataclass(slots=True)
@@ -910,8 +949,12 @@ def ensure_world_uses_nodes(report: ExportReport) -> bool:
     return changed
 
 
-def repair_scene_warnings(source_collection: object, report: ExportReport) -> dict[str, int]:
-    mesh_objects = collect_stage_mesh_objects(source_collection)
+def repair_scene_warnings(
+    source_collection: object,
+    report: ExportReport,
+    target_objects: list[object] | None = None,
+) -> dict[str, int]:
+    mesh_objects = target_objects if target_objects is not None else collect_stage_mesh_objects(source_collection)
     repairs = {
         'localized_objects': 0,
         'applied_scale': 0,
@@ -1205,12 +1248,26 @@ def find_principled_node(material: object) -> object | None:
 
 
 def trace_image_from_socket(socket: object, depth: int = 0, visited: set[tuple[str, str]] | None = None) -> object | None:
+    return trace_socket_source(socket, depth=depth, visited=visited).image
+
+
+def describe_node_for_diagnostic(node: object) -> str:
+    node_type = getattr(node, 'type', 'UNKNOWN')
+    node_name = getattr(node, 'name', node_type)
+    return f'{node_name} ({node_type})'
+
+
+def trace_socket_source(socket: object, depth: int = 0, visited: set[tuple[str, str]] | None = None) -> SocketTrace:
+    trace = SocketTrace()
     if socket is None or not socket.is_linked:
-        return None
+        return trace
     if visited is None:
         visited = set()
     if depth > 8:
-        return None
+        trace.unsupported_nodes.append('trace depth exceeded 8 levels')
+        return trace
+
+    trace.linked = True
 
     for link in socket.links:
         node = link.from_node
@@ -1220,27 +1277,27 @@ def trace_image_from_socket(socket: object, depth: int = 0, visited: set[tuple[s
         visited.add(key)
 
         if node.type == 'TEX_IMAGE' and getattr(node, 'image', None) is not None:
-            return node.image
+            if trace.image is None:
+                trace.image = node.image
+            continue
 
-        if node.type in {'NORMAL_MAP', 'SEPARATE_COLOR', 'SEPARATE_RGB'}:
+        if node.type in SUPPORTED_IMAGE_TRACE_NODE_TYPES:
             for input_socket in node.inputs:
-                image = trace_image_from_socket(input_socket, depth + 1, visited)
-                if image is not None:
-                    return image
+                trace.merge(trace_socket_source(input_socket, depth + 1, visited))
+            continue
 
-        for input_socket in node.inputs:
-            image = trace_image_from_socket(input_socket, depth + 1, visited)
-            if image is not None:
-                return image
+        node_label = describe_node_for_diagnostic(node)
+        if node_label not in trace.unsupported_nodes:
+            trace.unsupported_nodes.append(node_label)
 
-    return None
+    return trace
 
 
 def analyze_material(material: object, blend_dir: Path, report: ExportReport) -> MaterialAnalysis:
-    analysis = MaterialAnalysis(name=material.name, status='ready')
+    analysis = MaterialAnalysis(name=material.name, status=MATERIAL_STATUS_READY)
     principled = find_principled_node(material)
     if principled is None:
-        analysis.status = 'bake-required'
+        analysis.status = MATERIAL_STATUS_BAKE_REQUIRED
         analysis.notes.append('Material is not using a Principled BSDF node tree.')
         return analysis
 
@@ -1250,11 +1307,27 @@ def analyze_material(material: object, blend_dir: Path, report: ExportReport) ->
     metallic_socket = principled.inputs.get('Metallic')
     emissive_socket = principled.inputs.get('Emission Color') or principled.inputs.get('Emission')
 
-    analysis.base_color_image = trace_image_from_socket(base_socket)
-    analysis.normal_image = trace_image_from_socket(normal_socket)
-    analysis.roughness_image = trace_image_from_socket(roughness_socket)
-    analysis.metallic_image = trace_image_from_socket(metallic_socket)
-    analysis.emissive_image = trace_image_from_socket(emissive_socket)
+    socket_traces = {
+        'base_color': trace_socket_source(base_socket),
+        'normal': trace_socket_source(normal_socket),
+        'roughness': trace_socket_source(roughness_socket),
+        'metallic': trace_socket_source(metallic_socket),
+        'emissive': trace_socket_source(emissive_socket),
+    }
+    analysis.base_color_image = socket_traces['base_color'].image
+    analysis.normal_image = socket_traces['normal'].image
+    analysis.roughness_image = socket_traces['roughness'].image
+    analysis.metallic_image = socket_traces['metallic'].image
+    analysis.emissive_image = socket_traces['emissive'].image
+
+    for socket_name, socket_trace in socket_traces.items():
+        if not socket_trace.unsupported_nodes:
+            continue
+        display_socket_name = socket_name.replace('_', ' ')
+        analysis.unsupported_inputs.extend(
+            f'{display_socket_name}: {node_label}'
+            for node_label in socket_trace.unsupported_nodes
+        )
 
     if material.node_tree is not None:
         for node in material.node_tree.nodes:
@@ -1275,17 +1348,30 @@ def analyze_material(material: object, blend_dir: Path, report: ExportReport) ->
                         f'Material "{material.name}" references an external texture outside the blend folder: {image_path}'
                     )
 
-    if analysis.base_color_image is None:
-        analysis.missing.append('base_color')
-    if analysis.roughness_image is None and analysis.orm_image is None:
-        analysis.missing.append('roughness')
-    if analysis.metallic_image is None and analysis.orm_image is None:
-        analysis.missing.append('metallic')
+    if analysis.unsupported_inputs:
+        analysis.status = MATERIAL_STATUS_BAKE_REQUIRED
+        analysis.notes.append(
+            'Material uses procedural or unsupported nodes on export-relevant inputs: '
+            + ', '.join(analysis.unsupported_inputs)
+        )
+    else:
+        if socket_traces['base_color'].linked and analysis.base_color_image is None:
+            analysis.missing.append('base_color')
+        if socket_traces['normal'].linked and analysis.normal_image is None:
+            analysis.missing.append('normal')
+        if socket_traces['roughness'].linked and analysis.roughness_image is None and analysis.orm_image is None:
+            analysis.missing.append('roughness')
+        if socket_traces['metallic'].linked and analysis.metallic_image is None and analysis.orm_image is None:
+            analysis.missing.append('metallic')
+        if socket_traces['emissive'].linked and analysis.emissive_image is None:
+            analysis.missing.append('emissive')
 
-    if analysis.base_color_image is None and not analysis.orm_image and not analysis.normal_image:
-        analysis.status = 'bake-required'
-    elif analysis.missing:
-        analysis.status = 'partial'
+        if analysis.missing:
+            analysis.status = MATERIAL_STATUS_BAKE_REQUIRED
+            analysis.notes.append(
+                'Material uses linked export inputs that do not resolve to image textures: '
+                + ', '.join(analysis.missing)
+            )
 
     return analysis
 
@@ -1308,6 +1394,7 @@ def log_material_analysis_details(analysis_cache: dict[str, MaterialAnalysis], r
             '  '
             f'{analysis.name}: status={analysis.status}; '
             f'missing={", ".join(analysis.missing) if analysis.missing else "none"}; '
+            f'unsupported_inputs={", ".join(analysis.unsupported_inputs) if analysis.unsupported_inputs else "none"}; '
             f'base_color={describe_image_reference(analysis.base_color_image)}; '
             f'normal={describe_image_reference(analysis.normal_image)}; '
             f'roughness={describe_image_reference(analysis.roughness_image)}; '
@@ -1328,9 +1415,65 @@ def describe_object_materials(object_: object) -> str:
     return ', '.join(materials)
 
 
+def analyze_object_readiness(
+    mesh_objects: list[object],
+    analysis_cache: dict[str, MaterialAnalysis],
+) -> dict[str, ObjectAnalysis]:
+    object_analysis: dict[str, ObjectAnalysis] = {}
+    for object_ in mesh_objects:
+        repair_issues: list[str] = []
+        bake_reasons: list[str] = []
+        material_names: list[str] = []
+
+        if object_.library is not None:
+            repair_issues.append('linked from an external library')
+        if object_has_unapplied_scale(object_):
+            repair_issues.append('has unapplied scale')
+        if object_has_uv_warning(object_):
+            repair_issues.append('has no UV map')
+        if object_has_material_warning(object_):
+            repair_issues.append('has no assigned material')
+
+        seen_material_names: set[str] = set()
+        for slot in object_.material_slots:
+            material = slot.material
+            if material is None:
+                continue
+            if material.name_full not in seen_material_names:
+                material_names.append(material.name)
+                seen_material_names.add(material.name_full)
+            analysis = analysis_cache.get(material.name_full)
+            if analysis is None:
+                bake_reasons.append(f'material "{material.name}" could not be analyzed')
+                continue
+            if analysis.status != MATERIAL_STATUS_READY:
+                if analysis.notes:
+                    bake_reasons.append(f'material "{material.name}": {analysis.notes[0]}')
+                else:
+                    bake_reasons.append(f'material "{material.name}" requires baking')
+
+        if repair_issues:
+            status = OBJECT_STATUS_REPAIR_REQUIRED
+        elif bake_reasons:
+            status = OBJECT_STATUS_BAKE_REQUIRED
+        else:
+            status = OBJECT_STATUS_READY
+
+        object_analysis[object_.name] = ObjectAnalysis(
+            object_=object_,
+            status=status,
+            repair_issues=repair_issues,
+            bake_reasons=bake_reasons,
+            material_names=material_names,
+        )
+
+    return object_analysis
+
+
 def log_object_analysis_details(
     mesh_objects: list[object],
     bundles: dict[str, MeshBundle],
+    object_analysis: dict[str, ObjectAnalysis],
     report: ExportReport,
 ) -> None:
     report.info('Object analysis details:')
@@ -1340,12 +1483,27 @@ def log_object_analysis_details(
         bundle = bundles.get(bundle_name)
         bundle_lods = sorted(bundle.existing_lods.keys()) if bundle is not None else []
         lod_label = f'LOD{match.group("level")}' if match else 'source'
+        status_analysis = object_analysis.get(object_.name)
+        status = status_analysis.status if status_analysis is not None else 'unknown'
+        repair_label = (
+            '; repair_issues=' + ', '.join(status_analysis.repair_issues)
+            if status_analysis is not None and status_analysis.repair_issues
+            else ''
+        )
+        bake_label = (
+            '; bake_reasons=' + ' | '.join(status_analysis.bake_reasons)
+            if status_analysis is not None and status_analysis.bake_reasons
+            else ''
+        )
         report.info(
             '  '
             f'{object_.name}: role={lod_label}; '
+            f'status={status}; '
             f'bundle={bundle_name}; '
             f'available_lods={", ".join(f"LOD{level}" for level in bundle_lods) if bundle_lods else "generated-from-source"}; '
             f'materials={describe_object_materials(object_)}'
+            f'{repair_label}'
+            f'{bake_label}'
         )
 
 
@@ -2442,6 +2600,11 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             'initial_control_target': None,
             'analysis_cache': None,
             'bundles': None,
+            'object_analysis': None,
+            'ready_mesh_objects': None,
+            'bake_mesh_objects': None,
+            'repair_mesh_objects': None,
+            'export_bundles': None,
             'quality_plans': None,
             'autobake': None,
             'bake_required_materials': None,
@@ -2495,6 +2658,11 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                 {
                     'analysis_cache': None,
                     'bundles': None,
+                    'object_analysis': None,
+                    'ready_mesh_objects': None,
+                    'bake_mesh_objects': None,
+                    'repair_mesh_objects': None,
+                    'export_bundles': None,
                     'quality_plans': None,
                     'autobake': None,
                     'bake_required_materials': None,
@@ -2511,15 +2679,39 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             assert blend_path is not None
             analysis_cache = analyze_materials(mesh_objects, blend_path.parent, report)
             bundles = build_mesh_bundles(mesh_objects)
+            object_analysis = analyze_object_readiness(mesh_objects, analysis_cache)
+            ready_mesh_objects = [
+                analysis.object_
+                for analysis in object_analysis.values()
+                if analysis.status == OBJECT_STATUS_READY
+            ]
+            bake_mesh_objects = [
+                analysis.object_
+                for analysis in object_analysis.values()
+                if analysis.status == OBJECT_STATUS_BAKE_REQUIRED
+            ]
+            repair_mesh_objects = [
+                analysis.object_
+                for analysis in object_analysis.values()
+                if analysis.status == OBJECT_STATUS_REPAIR_REQUIRED
+            ]
+            export_bundles = build_mesh_bundles(ready_mesh_objects)
             quality_plans = build_quality_plans(stage_state['paths'], config)
             autobake = AutoBake2Adapter(report)
             bake_required_materials = [
-                analysis for analysis in analysis_cache.values() if analysis.status == 'bake-required'
+                analysis
+                for analysis in analysis_cache.values()
+                if analysis.status == MATERIAL_STATUS_BAKE_REQUIRED
             ]
             stage_state.update(
                 {
                     'analysis_cache': analysis_cache,
                     'bundles': bundles,
+                    'object_analysis': object_analysis,
+                    'ready_mesh_objects': ready_mesh_objects,
+                    'bake_mesh_objects': bake_mesh_objects,
+                    'repair_mesh_objects': repair_mesh_objects,
+                    'export_bundles': export_bundles,
                     'quality_plans': quality_plans,
                     'autobake': autobake,
                     'bake_required_materials': bake_required_materials,
@@ -2558,7 +2750,10 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             mesh_objects = stage_state['mesh_objects']
             analysis_cache = stage_state['analysis_cache']
             bundles = stage_state['bundles']
-            bake_required_materials = stage_state['bake_required_materials']
+            object_analysis = stage_state['object_analysis']
+            ready_mesh_objects = stage_state['ready_mesh_objects']
+            bake_mesh_objects = stage_state['bake_mesh_objects']
+            repair_mesh_objects = stage_state['repair_mesh_objects']
             excluded_mesh_count = count_excluded_mesh_objects(source_collection)
             collection_source_label = (
                 'currently active collection'
@@ -2576,19 +2771,37 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                 f'collection id="{collection_id}", package slug="{package_name}".'
             )
             report.summary(
-                'Material analysis summary: '
-                f'{sum(1 for analysis in analysis_cache.values() if analysis.status == "ready")} ready, '
-                f'{sum(1 for analysis in analysis_cache.values() if analysis.status == "partial")} partial, '
-                f'{len(bake_required_materials)} bake-required.'
+                'Object readiness summary: '
+                f'{len(ready_mesh_objects)} ready for export, '
+                f'{len(bake_mesh_objects)} require baking, '
+                f'{len(repair_mesh_objects)} require repair.'
             )
-            report.summary(f'LOD bundle count: {len(bundles)}')
+            report.summary(
+                'Material analysis summary: '
+                f'{sum(1 for analysis in analysis_cache.values() if analysis.status == MATERIAL_STATUS_READY)} ready, '
+                f'{sum(1 for analysis in analysis_cache.values() if analysis.status == MATERIAL_STATUS_BAKE_REQUIRED)} bake-required.'
+            )
+            report.summary(
+                f'LOD bundle count: total={len(bundles)}, export-ready={len(stage_state["export_bundles"])}'
+            )
             log_material_analysis_details(analysis_cache, report)
-            log_object_analysis_details(mesh_objects, bundles, report)
+            log_object_analysis_details(mesh_objects, bundles, object_analysis, report)
 
         def repair_stage() -> None:
             ensure_scene_context(require_cycles=True)
             source_collection = stage_state['source_collection']
-            repairs = repair_scene_warnings(source_collection, report)
+            ensure_analysis_context()
+            repair_mesh_objects = stage_state['repair_mesh_objects']
+            if repair_mesh_objects:
+                repairs = repair_scene_warnings(source_collection, report, repair_mesh_objects)
+            else:
+                repairs = {
+                    'localized_objects': 0,
+                    'applied_scale': 0,
+                    'generated_uv_maps': 0,
+                    'assigned_materials': 0,
+                    'enabled_world_nodes': 0,
+                }
             invalidate_analysis_context()
             stage_state.update(
                 {
@@ -2608,6 +2821,12 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                 f'materials_assigned={repairs["assigned_materials"]}, '
                 f'world_nodes_enabled={repairs["enabled_world_nodes"]}.'
             )
+            report.summary(
+                'Post-repair object readiness: '
+                f'{len(stage_state["ready_mesh_objects"])} ready for export, '
+                f'{len(stage_state["bake_mesh_objects"])} require baking, '
+                f'{len(stage_state["repair_mesh_objects"])} still require repair.'
+            )
 
         def bake_stage() -> None:
             ensure_scene_context(require_cycles=True)
@@ -2615,24 +2834,33 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             describe_autobake_once()
             autobake = stage_state['autobake']
             mesh_objects = stage_state['mesh_objects']
-            bake_required_materials = stage_state['bake_required_materials']
+            bake_mesh_objects = stage_state['bake_mesh_objects']
+            repair_mesh_objects = stage_state['repair_mesh_objects']
             if config.verify_autobake_adapter:
-                return autobake.verify(mesh_objects[:1], mesh_objects[:1], config.high_texture_size)
-            if bake_required_materials and config.bake_behavior in {'auto', 'autobake'}:
+                verification_objects = bake_mesh_objects[:1] or mesh_objects[:1]
+                return autobake.verify(verification_objects, verification_objects, config.high_texture_size)
+            if repair_mesh_objects:
+                report.warn(
+                    'Some objects still require repair. The bake stage will ignore them until the repair stage runs successfully.'
+                )
+            if bake_mesh_objects and config.bake_behavior in {'auto', 'autobake'}:
                 report.summary(
-                    'Some materials are procedural or incomplete. The script will select all visible mesh objects '
+                    'Some objects require baking. The script will select only mesh objects classified as bake-required '
                     'and launch Auto Bake 2 with an auto-seeded bake list when needed. The script enables Final Material, '
                     'Remove Nodes, Final Object, and Reuse Elements, then finishes by running Auto Bake 2\'s Confirm flow '
                     'with Swap Object enabled.'
                 )
-                if not autobake.configure_session(mesh_objects, mesh_objects, config.high_texture_size):
+                if not autobake.configure_session(bake_mesh_objects, bake_mesh_objects, config.high_texture_size):
                     return
                 invalidate_analysis_context()
                 return autobake.start_session()
-            if bake_required_materials and config.bake_behavior == 'manual':
+            if bake_mesh_objects and config.bake_behavior == 'manual':
                 report.warn(
-                    'Some materials need baking. Manual or direct Blender bake fallback is still required for these node graphs.'
+                    'Some objects need baking. Manual or direct Blender bake fallback is still required for these node graphs.'
                 )
+                return
+            if repair_mesh_objects:
+                report.summary('No bake action was taken because remaining non-ready objects still require repair first.')
                 return
             report.summary('No bake action was required for the selected scene and bake settings.')
 
@@ -2640,11 +2868,26 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             ensure_analysis_context()
             quality_lookup = {quality.label: quality for quality in stage_state['quality_plans']}
             quality = quality_lookup[stage_name.removeprefix('export-')]
+            export_bundles = stage_state['export_bundles']
+            skipped_objects = [
+                analysis.object_.name
+                for analysis in stage_state['object_analysis'].values()
+                if not analysis.export_ready
+            ]
+            if skipped_objects:
+                report.summary(
+                    f'Skipping {len(skipped_objects)} object(s) that are not ready for export in {stage_name}. '
+                    'Run inspect, repair, and bake until those objects are ready.'
+                )
+            if not export_bundles:
+                raise RuntimeError(
+                    f'The {stage_name} stage has no objects ready for export. Run inspect, repair, and bake first.'
+                )
             staging_dir = Path(tempfile.mkdtemp(prefix=f'{stage_state["package_name"]}_blendprep_'))
             try:
                 if not export_quality_level(
                     quality,
-                    stage_state['bundles'],
+                    export_bundles,
                     stage_state['analysis_cache'],
                     staging_dir,
                     config,

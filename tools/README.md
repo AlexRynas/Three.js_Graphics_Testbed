@@ -20,10 +20,11 @@
 - The console intentionally shows only stage-level summaries. Detailed warnings, info messages, index snippets, and tracebacks are written to the log file.
 - The available stages are `inspect`, `repair`, `bake`, `export-high`, `export-medium`, `export-low`, and `package`.
 - The `inspect` stage resolves the collection, validates scene prerequisites, creates the output layout, derives manifest camera metadata, and inspects materials, textures, LOD bundles, and Auto Bake 2 availability.
+- The `inspect` stage now classifies every eligible mesh object as `ready`, `bake-required`, or `repair-required` so you can see which objects are immediately exportable and which still need preparation.
 - The `inspect` stage also reports how many scene objects are eligible for processing versus excluded because they are hidden in the viewport, disabled for rendering, or both.
-- The `repair` stage automatically fixes the warnings surfaced by `inspect` by making linked assets local when possible, applying scale, generating UV maps, assigning default materials, and enabling World nodes.
-- The `bake` stage runs Auto Bake 2 when needed, enables Final Material, Remove Nodes, Final Object, and Reuse Elements, completes the session through Auto Bake 2's Confirm flow with Swap Object enabled, and then saves any dirty baked images to disk automatically.
-- The three `export-*` stages each write a single GLB variant.
+- The `repair` stage automatically fixes only the objects classified as `repair-required` by making linked assets local when possible, applying scale, generating UV maps, assigning default materials, and enabling World nodes.
+- The `bake` stage runs Auto Bake 2 only for objects classified as `bake-required`, enables Final Material, Remove Nodes, Final Object, and Reuse Elements, completes the session through Auto Bake 2's Confirm flow with Swap Object enabled, and then saves any dirty baked images to disk automatically.
+- The three `export-*` stages each write a single GLB variant using only objects currently classified as `ready`.
 - The `package` stage renders the thumbnail, copies the HDR environment, writes `manifest.json`, writes the text report, and prints the `collections-index.json` snippet.
 - The `repair`, `bake`, `export-*`, and `package` stages ignore any object that is hidden in the viewport, disabled for rendering, or both.
 - Stages are isolated. Running `export-*`, `bake`, or `package` no longer emits separate `inspect` or `repair` stage headers automatically.
@@ -45,7 +46,8 @@ run_testbed_export_stage('package')
 - After the `bake` stage finishes, the script saves newly baked dirty images immediately so later `export-*` stages can reuse them without requiring Blender's close-window image save prompt.
 - If you need the structured result object, call `get_last_testbed_export_result()` or inspect `testbed_export.last_result`.
 - If you explicitly want the helper to return the result object in the console, pass `echo_result=True`.
-- If you want validation, material diagnostics, and automatic warning repair in the log, run `inspect` and `repair` explicitly before `bake`, `export-*`, or `package`.
+- If you want validation, object readiness diagnostics, and automatic warning repair in the log, run `inspect` and `repair` explicitly before `bake`, `export-*`, or `package`.
+- The intended workflow is `inspect`, then `repair`, then `bake`, and finally the `export-*` stages. After `repair` and `bake`, the remaining eligible objects should be `ready` for export.
 - When `export-medium` or `export-low` has to generate a missing LOD, the script now skips DECIMATE when the seed mesh is already sparse or when the requested result would collapse below a safe polygon floor. Those decisions are written to the detailed log.
 - Generated LODs also avoid cascading DECIMATE from authored `*_LOD1` or `*_LOD2` meshes. If you want exact medium and low results, keep authoring explicit `*_LOD0`, `*_LOD1`, and `*_LOD2` objects in Blender.
 - During `export-*`, Blender may log temporary mesh datablock names such as `TESTBED_BackWall_Mesh.002` even if the scene object currently shows `.001` in the UI. This is expected: the exporter duplicates meshes into a temporary collection before writing the GLB, and Blender auto-increments datablock suffixes for those transient export copies.
