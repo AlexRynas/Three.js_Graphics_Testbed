@@ -20,10 +20,12 @@
 - The console intentionally shows only stage-level summaries. Detailed warnings, info messages, index snippets, and tracebacks are written to the log file.
 - The available stages are `inspect`, `repair`, `bake`, `export-high`, `export-medium`, `export-low`, and `package`.
 - The `inspect` stage resolves the collection, validates scene prerequisites, creates the output layout, derives manifest camera metadata, and inspects materials, textures, LOD bundles, and Auto Bake 2 availability.
+- The `inspect` stage also reports how many scene objects are eligible for processing versus excluded because they are hidden in the viewport, disabled for rendering, or both.
 - The `repair` stage automatically fixes the warnings surfaced by `inspect` by making linked assets local when possible, applying scale, generating UV maps, assigning default materials, and enabling World nodes.
 - The `bake` stage runs Auto Bake 2 when needed, enables Final Material, Remove Nodes, Final Object, and Reuse Elements, completes the session through Auto Bake 2's Confirm flow with Swap Object enabled, and then saves any dirty baked images to disk automatically.
 - The three `export-*` stages each write a single GLB variant.
 - The `package` stage renders the thumbnail, copies the HDR environment, writes `manifest.json`, writes the text report, and prints the `collections-index.json` snippet.
+- The `repair`, `bake`, `export-*`, and `package` stages ignore any object that is hidden in the viewport, disabled for rendering, or both.
 - Stages are isolated. Running `export-*`, `bake`, or `package` no longer emits separate `inspect` or `repair` stage headers automatically.
 - When a stage needs scene context internally, it recomputes only the minimum state it needs without treating other stages as prerequisites.
 - Optional keyword arguments can be passed from the Python Console, for example `run_testbed_export_stage('bake', bake_behavior='manual')` or `run_testbed_export_stages('inspect', 'repair', collection_name_override='MyCollection')`.

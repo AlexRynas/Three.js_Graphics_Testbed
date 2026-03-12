@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.7.2'
+SCRIPT_VERSION = '0.7.3'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -533,7 +533,7 @@ def collect_images_from_node_tree(
 def collect_scene_material_images() -> list[object]:
     images: dict[int, object] = {}
     for object_ in bpy.context.scene.objects:
-        if getattr(object_, 'type', None) != 'MESH':
+        if not object_is_stage_eligible_mesh(object_):
             continue
         for slot in object_.material_slots:
             material = slot.material
@@ -614,7 +614,7 @@ def save_dirty_material_images(report: ExportReport) -> int:
 
 
 def object_has_meshes(collection: object) -> bool:
-    return any(object_.type == 'MESH' for object_ in iter_collection_objects(collection))
+    return any(object_is_stage_eligible_mesh(object_) for object_ in iter_collection_objects(collection))
 
 
 def iter_collection_objects(collection: object) -> list[object]:
@@ -627,6 +627,64 @@ def iter_collection_objects(collection: object) -> list[object]:
 
     visit(collection)
     return objects
+
+
+def object_is_viewport_hidden(object_: object) -> bool:
+    try:
+        return bool(object_.hide_get())
+    except RuntimeError:
+        return bool(getattr(object_, 'hide_viewport', False))
+
+
+def object_is_render_disabled(object_: object) -> bool:
+    return bool(getattr(object_, 'hide_render', False))
+
+
+def object_is_stage_excluded(object_: object) -> bool:
+    return object_is_viewport_hidden(object_) or object_is_render_disabled(object_)
+
+
+def object_is_stage_eligible_mesh(object_: object) -> bool:
+    return getattr(object_, 'type', None) == 'MESH' and not object_is_stage_excluded(object_)
+
+
+def collect_stage_mesh_objects(collection: object) -> list[object]:
+    return [object_ for object_ in iter_collection_objects(collection) if object_is_stage_eligible_mesh(object_)]
+
+
+def count_excluded_mesh_objects(collection: object) -> int:
+    return sum(
+        1
+        for object_ in iter_collection_objects(collection)
+        if getattr(object_, 'type', None) == 'MESH' and object_is_stage_excluded(object_)
+    )
+
+
+def summarize_scene_object_visibility() -> dict[str, int]:
+    counts = {
+        'eligible': 0,
+        'viewport_hidden': 0,
+        'render_disabled': 0,
+        'hidden_and_disabled': 0,
+        'excluded': 0,
+    }
+
+    for object_ in bpy.context.scene.objects:
+        viewport_hidden = object_is_viewport_hidden(object_)
+        render_disabled = object_is_render_disabled(object_)
+        if viewport_hidden and render_disabled:
+            counts['hidden_and_disabled'] += 1
+            counts['excluded'] += 1
+        elif viewport_hidden:
+            counts['viewport_hidden'] += 1
+            counts['excluded'] += 1
+        elif render_disabled:
+            counts['render_disabled'] += 1
+            counts['excluded'] += 1
+        else:
+            counts['eligible'] += 1
+
+    return counts
 
 
 def resolve_source_collection(config: ExportConfig, report: ExportReport) -> tuple[object, str, str]:
@@ -690,14 +748,18 @@ def validate_scene(
     camera = bpy.context.scene.camera
     if camera is None:
         raise RuntimeError('An active scene camera is required to derive the manifest view metadata.')
+    if object_is_stage_excluded(camera):
+        raise RuntimeError(
+            'The active scene camera is hidden in the viewport or disabled for rendering. '
+            'Use a camera that is visible in the viewport and enabled for rendering.'
+        )
 
-    mesh_objects = [
-        object_
-        for object_ in iter_collection_objects(source_collection)
-        if object_.type == 'MESH' and not object_.hide_get()
-    ]
+    mesh_objects = collect_stage_mesh_objects(source_collection)
     if not mesh_objects:
-        raise RuntimeError('The source collection does not contain any visible mesh objects to export.')
+        raise RuntimeError(
+            'The source collection does not contain any mesh objects that are visible in the viewport '
+            'and enabled for rendering.'
+        )
 
     for object_ in mesh_objects:
         if emit_warnings and object_.library is not None:
@@ -873,11 +935,7 @@ def ensure_world_uses_nodes(report: ExportReport) -> bool:
 
 
 def repair_scene_warnings(source_collection: object, report: ExportReport) -> dict[str, int]:
-    mesh_objects = [
-        object_
-        for object_ in iter_collection_objects(source_collection)
-        if object_.type == 'MESH' and not object_.hide_get()
-    ]
+    mesh_objects = collect_stage_mesh_objects(source_collection)
     repairs = {
         'localized_objects': 0,
         'applied_scale': 0,
@@ -985,10 +1043,10 @@ def find_named_target_marker(source_collection: object, package_name: str) -> ob
     names.add(f'{package_name}_control_target')
     names.add(f'{source_collection.name}_control_target')
     for object_ in iter_collection_objects(source_collection):
-        if object_.name in names:
+        if object_.name in names and not object_is_stage_excluded(object_):
             return object_
     for object_ in bpy.context.scene.objects:
-        if object_.name in names:
+        if object_.name in names and not object_is_stage_excluded(object_):
             return object_
     return None
 
@@ -1590,6 +1648,20 @@ def preserve_selection() -> object:
             bpy.context.view_layer.objects.active = previous_active
 
 
+@contextmanager
+def temporarily_exclude_stage_hidden_objects_from_render() -> object:
+    previous_hide_render: list[tuple[object, bool]] = []
+    try:
+        for object_ in bpy.context.scene.objects:
+            if object_is_viewport_hidden(object_) and not object_is_render_disabled(object_):
+                previous_hide_render.append((object_, object_.hide_render))
+                object_.hide_render = True
+        yield
+    finally:
+        for object_, hide_render in reversed(previous_hide_render):
+            object_.hide_render = hide_render
+
+
 def export_glb(filepath: Path, report: ExportReport) -> None:
     base_kwargs = {
         'filepath': str(filepath),
@@ -1750,7 +1822,8 @@ def render_thumbnail(paths: ExportPaths, size: int, report: ExportReport) -> Non
         render.resolution_x = size
         render.resolution_y = size
         render.resolution_percentage = 100
-        bpy.ops.render.render(write_still=True)
+        with temporarily_exclude_stage_hidden_objects_from_render():
+            bpy.ops.render.render(write_still=True)
         report.summary(f'Rendered thumbnail to {paths.thumbnail_path}')
     finally:
         render.filepath = previous_settings['filepath']
@@ -2014,7 +2087,7 @@ class AutoBake2Adapter:
         for object_ in [*target_objects, *source_objects]:
             if object_ is None or getattr(object_, 'type', None) != 'MESH':
                 continue
-            if object_.name in seen_names or object_.hide_get() or object_.name not in self.scene.objects:
+            if object_.name in seen_names or object_is_stage_excluded(object_) or object_.name not in self.scene.objects:
                 continue
             seen_names.add(object_.name)
             eligible_objects.append(object_)
@@ -2127,8 +2200,13 @@ class AutoBake2Adapter:
 
         prepared_objects = self._prepare_objects(source_objects, target_objects)
         if not prepared_objects:
-            self.status.errors.append('No visible mesh objects were available for Auto Bake 2.')
-            self.report.warn('Auto Bake 2 session setup failed: no visible mesh objects were available for baking.')
+            self.status.errors.append(
+                'No mesh objects visible in the viewport and enabled for rendering were available for Auto Bake 2.'
+            )
+            self.report.warn(
+                'Auto Bake 2 session setup failed: no mesh objects visible in the viewport and enabled '
+                'for rendering were available for baking.'
+            )
             return False
         if not self.ensure_bake_list(texture_size):
             return False
@@ -2155,7 +2233,10 @@ class AutoBake2Adapter:
 
         selected_objects = self._select_objects(self.prepared_objects) if self.prepared_objects else list(bpy.context.selected_objects)
         if not selected_objects:
-            message = 'Auto Bake 2 start operator failed: no visible mesh objects were available for selection.'
+            message = (
+                'Auto Bake 2 start operator failed: no mesh objects visible in the viewport and '
+                'enabled for rendering were available for selection.'
+            )
             self.status.errors.append(message)
             self.report.warn(message)
             return None
@@ -2499,12 +2580,21 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             analysis_cache = stage_state['analysis_cache']
             bundles = stage_state['bundles']
             bake_required_materials = stage_state['bake_required_materials']
+            scene_visibility = summarize_scene_object_visibility()
+            excluded_mesh_count = count_excluded_mesh_objects(source_collection)
             report.info(
                 f'Using source collection "{source_collection.name}", collection id "{collection_id}", '
                 f'and package slug "{package_name}".'
             )
             report.summary(
-                f'Inspect summary: collection="{source_collection.name}", visible meshes={len(mesh_objects)}, '
+                f'Scene object visibility: eligible={scene_visibility["eligible"]}, excluded={scene_visibility["excluded"]} '
+                f'(viewport-hidden={scene_visibility["viewport_hidden"]}, '
+                f'render-disabled={scene_visibility["render_disabled"]}, '
+                f'both={scene_visibility["hidden_and_disabled"]}).'
+            )
+            report.summary(
+                f'Inspect summary: collection="{source_collection.name}", eligible meshes={len(mesh_objects)}, '
+                f'excluded meshes={excluded_mesh_count}, '
                 f'collection id="{collection_id}", package slug="{package_name}".'
             )
             report.summary(
