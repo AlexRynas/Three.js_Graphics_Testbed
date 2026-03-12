@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.4.1'
+SCRIPT_VERSION = '0.5.0'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -43,7 +43,7 @@ IMAGE_NAME_HINTS = {
 }
 STAGE_ORDER = (
     'inspect',
-    'analyze',
+    'repair',
     'bake',
     'export-high',
     'export-medium',
@@ -51,8 +51,8 @@ STAGE_ORDER = (
     'package',
 )
 STAGE_DESCRIPTIONS = {
-    'inspect': 'Resolve the source collection, validate scene prerequisites, create the output layout, and derive initial camera metadata.',
-    'analyze': 'Inspect mesh LOD bundles, analyze materials and textures, and detect Auto Bake 2 availability without exporting assets.',
+    'inspect': 'Resolve the source collection, validate scene prerequisites, create the output layout, derive initial camera metadata, and inspect materials, textures, LOD bundles, and Auto Bake 2 availability.',
+    'repair': 'Automatically repair inspect-stage warnings by making linked assets local when possible, applying scale, generating UV maps, assigning default materials, and enabling World nodes.',
     'bake': 'Run Auto Bake 2 when needed, then complete the session through the add-on confirm flow.',
     'export-high': 'Export only the high-detail GLB package using LOD0 or the best available source mesh.',
     'export-medium': 'Export only the medium-detail GLB package using LOD1 or a generated decimated mesh.',
@@ -588,6 +588,174 @@ def validate_scene(
         report.warn('The active World does not use nodes; no HDR environment file will be emitted.')
 
     return mesh_objects
+
+
+def object_has_unapplied_scale(object_: object) -> bool:
+    return any(abs(value - 1.0) > 0.0001 for value in object_.scale[:])
+
+
+def object_has_uv_warning(object_: object) -> bool:
+    mesh = getattr(object_, 'data', None)
+    return bool(mesh is not None and hasattr(mesh, 'uv_layers') and len(mesh.uv_layers) == 0)
+
+
+def object_has_material_warning(object_: object) -> bool:
+    return bool(not object_.material_slots or all(slot.material is None for slot in object_.material_slots))
+
+
+@contextmanager
+def activate_object(object_: object) -> object:
+    with preserve_selection():
+        active_object = bpy.context.view_layer.objects.active
+        if active_object is not None and getattr(active_object, 'mode', 'OBJECT') != 'OBJECT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        bpy.ops.object.select_all(action='DESELECT')
+        object_.select_set(True)
+        bpy.context.view_layer.objects.active = object_
+        bpy.context.view_layer.update()
+        try:
+            yield
+        finally:
+            current_active = bpy.context.view_layer.objects.active
+            if current_active is not None and getattr(current_active, 'mode', 'OBJECT') != 'OBJECT':
+                bpy.ops.object.mode_set(mode='OBJECT')
+
+
+def make_object_data_local(object_: object, report: ExportReport) -> object:
+    if object_.library is None:
+        return object_
+
+    try:
+        object_.make_local()
+        if getattr(object_.data, 'library', None) is not None and hasattr(object_.data, 'make_local'):
+            object_.data.make_local()
+        for slot in object_.material_slots:
+            material = slot.material
+            if material is not None and getattr(material, 'library', None) is not None and hasattr(material, 'make_local'):
+                material.make_local()
+        report.summary(f'Made linked object "{object_.name}" local for repair operations.')
+    except Exception as error:
+        report.warn(f'Could not make linked object "{object_.name}" local automatically: {error}')
+    return object_
+
+
+def apply_object_scale(object_: object, report: ExportReport) -> bool:
+    if not object_has_unapplied_scale(object_):
+        return False
+
+    with activate_object(object_):
+        bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    report.summary(f'Applied scale for object "{object_.name}".')
+    return True
+
+
+def ensure_object_uv_map(object_: object, report: ExportReport) -> bool:
+    if not object_has_uv_warning(object_):
+        return False
+
+    mesh = object_.data
+    mesh.uv_layers.new(name='UVMap')
+    try:
+        with activate_object(object_):
+            bpy.ops.object.mode_set(mode='EDIT')
+            bpy.ops.mesh.select_all(action='SELECT')
+            bpy.ops.uv.smart_project()
+            bpy.ops.object.mode_set(mode='OBJECT')
+        report.summary(f'Generated a UV map for object "{object_.name}" with Smart UV Project.')
+        return True
+    except Exception as error:
+        report.warn(f'Created a UV layer for object "{object_.name}", but Smart UV Project failed: {error}')
+        return True
+
+
+def ensure_object_material_slot(object_: object, report: ExportReport) -> bool:
+    if not object_has_material_warning(object_):
+        return False
+
+    mesh = object_.data
+    material = bpy.data.materials.get(f'{sanitize_package_name(object_.name)}_Material')
+    if material is None:
+        material = bpy.data.materials.new(name=f'{sanitize_package_name(object_.name)}_Material')
+        material.use_nodes = True
+
+    if len(object_.material_slots) == 0:
+        mesh.materials.append(material)
+    else:
+        assigned = False
+        for index, slot in enumerate(object_.material_slots):
+            if slot.material is None:
+                object_.material_slots[index].material = material
+                assigned = True
+                break
+        if not assigned:
+            mesh.materials.append(material)
+
+    report.summary(f'Assigned default material "{material.name}" to object "{object_.name}".')
+    return True
+
+
+def ensure_world_uses_nodes(report: ExportReport) -> bool:
+    scene = bpy.context.scene
+    world = scene.world
+    changed = False
+
+    if world is None:
+        world = bpy.data.worlds.new('TestbedWorld')
+        scene.world = world
+        changed = True
+
+    if not world.use_nodes:
+        world.use_nodes = True
+        changed = True
+
+    if world.node_tree is None:
+        world.use_nodes = True
+        changed = True
+
+    if changed:
+        report.summary(f'Enabled World nodes for "{world.name}".')
+    return changed
+
+
+def repair_scene_warnings(source_collection: object, report: ExportReport) -> dict[str, int]:
+    mesh_objects = [
+        object_
+        for object_ in iter_collection_objects(source_collection)
+        if object_.type == 'MESH' and not object_.hide_get()
+    ]
+    repairs = {
+        'localized_objects': 0,
+        'applied_scale': 0,
+        'generated_uv_maps': 0,
+        'assigned_materials': 0,
+        'enabled_world_nodes': 0,
+    }
+
+    for object_ in mesh_objects:
+        if object_.library is not None:
+            previous_name = object_.name
+            make_object_data_local(object_, report)
+            if object_.library is None:
+                repairs['localized_objects'] += 1
+            elif object_.name != previous_name:
+                repairs['localized_objects'] += 1
+
+        if object_has_unapplied_scale(object_):
+            if apply_object_scale(object_, report):
+                repairs['applied_scale'] += 1
+
+        if object_has_uv_warning(object_):
+            if ensure_object_uv_map(object_, report):
+                repairs['generated_uv_maps'] += 1
+
+        if object_has_material_warning(object_):
+            if ensure_object_material_slot(object_, report):
+                repairs['assigned_materials'] += 1
+
+    if ensure_world_uses_nodes(report):
+        repairs['enabled_world_nodes'] += 1
+
+    return repairs
 
 
 def build_output_paths(blend_path: Path, package_name: str, config: ExportConfig) -> ExportPaths:
@@ -2040,10 +2208,15 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                 }
             )
             ensure_scene_context(emit_warnings=True, require_cycles=True)
+            ensure_analysis_context()
+            describe_autobake_once()
             source_collection = stage_state['source_collection']
             collection_id = stage_state['collection_id']
             package_name = stage_state['package_name']
             mesh_objects = stage_state['mesh_objects']
+            analysis_cache = stage_state['analysis_cache']
+            bundles = stage_state['bundles']
+            bake_required_materials = stage_state['bake_required_materials']
             report.info(
                 f'Using source collection "{source_collection.name}", collection id "{collection_id}", '
                 f'and package slug "{package_name}".'
@@ -2052,14 +2225,6 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                 f'Inspect summary: collection="{source_collection.name}", visible meshes={len(mesh_objects)}, '
                 f'collection id="{collection_id}", package slug="{package_name}".'
             )
-
-        def analyze_stage() -> None:
-            ensure_analysis_context()
-            describe_autobake_once()
-            mesh_objects = stage_state['mesh_objects']
-            analysis_cache = stage_state['analysis_cache']
-            bundles = stage_state['bundles']
-            bake_required_materials = stage_state['bake_required_materials']
             report.summary(
                 'Material analysis summary: '
                 f'{sum(1 for analysis in analysis_cache.values() if analysis.status == "ready")} ready, '
@@ -2069,6 +2234,30 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             report.summary(f'LOD bundle count: {len(bundles)}')
             log_material_analysis_details(analysis_cache, report)
             log_object_analysis_details(mesh_objects, bundles, report)
+
+        def repair_stage() -> None:
+            ensure_scene_context(require_cycles=True)
+            source_collection = stage_state['source_collection']
+            repairs = repair_scene_warnings(source_collection, report)
+            invalidate_analysis_context()
+            stage_state.update(
+                {
+                    'mesh_objects': None,
+                    'initial_camera_position': None,
+                    'initial_control_target': None,
+                }
+            )
+            ensure_scene_context(emit_warnings=True, require_cycles=True)
+            ensure_analysis_context()
+            describe_autobake_once()
+            report.summary(
+                'Repair summary: '
+                f'localized={repairs["localized_objects"]}, '
+                f'scale_applied={repairs["applied_scale"]}, '
+                f'uv_generated={repairs["generated_uv_maps"]}, '
+                f'materials_assigned={repairs["assigned_materials"]}, '
+                f'world_nodes_enabled={repairs["enabled_world_nodes"]}.'
+            )
 
         def bake_stage() -> None:
             ensure_scene_context(require_cycles=True)
@@ -2152,8 +2341,8 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
         if 'inspect' in requested_stages:
             run_stage('inspect', report, inspect_stage)
 
-        if 'analyze' in requested_stages:
-            run_stage('analyze', report, analyze_stage)
+        if 'repair' in requested_stages:
+            run_stage('repair', report, repair_stage)
 
         if 'bake' in requested_stages:
             bake_stage_state = StageRunState()
@@ -2237,7 +2426,7 @@ def print_console_usage() -> None:
     print('Run this script from the Scripting tab once, then use one of these commands in the Python console:')
     print('  list_testbed_export_stages()')
     print("  run_testbed_export_stage('inspect')")
-    print("  run_testbed_export_stages('inspect', 'analyze')")
+    print("  run_testbed_export_stage('repair')")
     print("  run_testbed_export_stage('bake')")
     print(r"  run_testbed_export_stage('inspect', log_path_override='F:/tmp/testbed-inspect.log')")
     print("  run_testbed_export_stages('export-high', 'export-medium', 'export-low')")
