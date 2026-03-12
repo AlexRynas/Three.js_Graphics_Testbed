@@ -49,6 +49,11 @@ type LoadCollectionResult = {
   normalization: ResolvedCollectionNormalization;
 };
 
+type LodLevelDescriptor = {
+  url: string;
+  distance: number;
+};
+
 const PROCEDURAL_INITIAL_CAMERA_POSITION: Vector3Tuple = [0, 10, 30];
 const PROCEDURAL_INITIAL_CONTROL_TARGET: Vector3Tuple = [0, 5, 0];
 
@@ -132,7 +137,10 @@ export class SceneContentService {
     }
 
     const environmentUrl = manifest.environment || DEFAULT_ENVIRONMENT_MAP_URL;
-    await this.loadAndApplyEnvironment(environmentUrl, params.applyEnvironment);
+    const environmentPromise = this.loadAndApplyEnvironment(
+      environmentUrl,
+      params.applyEnvironment,
+    );
 
     const group = new THREE.Group();
     scene.add(group);
@@ -148,6 +156,9 @@ export class SceneContentService {
     );
     group.scale.setScalar(normalization.rootScale);
     group.updateMatrixWorld(true);
+
+    // Mark the environment load as intentional fire-and-forget so scene readiness is not blocked.
+    void environmentPromise;
 
     const initialView = this.resolveInitialView(manifest);
 
@@ -203,10 +214,19 @@ export class SceneContentService {
     const lod = new THREE.LOD();
     group.add(lod);
 
+    const levels = this.createLodLevelDescriptors(lods, sceneSettings);
+    const loadQueue = [...levels].reverse();
+    const initialLevel = loadQueue.shift();
+
+    if (!initialLevel) {
+      return;
+    }
+
     await this.loadLodLevel(
-      lods[0],
+      initialLevel.url,
       lod,
-      0,
+      initialLevel.distance,
+      group,
       threeModule,
       sceneSettings,
       rendererMode,
@@ -214,26 +234,64 @@ export class SceneContentService {
       onTopologyChange,
     );
 
-    const higher = lods.slice(1);
-    higher.forEach((url, index) => {
-      const distance = (index + 1) * 12 + sceneSettings.lodBias * 3;
-      void this.loadLodLevel(
-        url,
+    void this.loadRemainingLodLevels(
+      loadQueue,
+      lod,
+      group,
+      threeModule,
+      sceneSettings,
+      rendererMode,
+      pathTracingEnabled,
+      onTopologyChange,
+    );
+  }
+
+  private createLodLevelDescriptors(
+    lods: string[],
+    sceneSettings: SceneSettings,
+  ): LodLevelDescriptor[] {
+    return lods.map((url, index) => ({
+      url,
+      distance: index === 0 ? 0 : index * 12 + sceneSettings.lodBias * 3,
+    }));
+  }
+
+  private async loadRemainingLodLevels(
+    levels: LodLevelDescriptor[],
+    lod: InstanceType<ThreeModule['LOD']>,
+    group: GroupInstance,
+    threeModule: ThreeModule,
+    sceneSettings: SceneSettings,
+    rendererMode: RendererMode,
+    pathTracingEnabled: boolean,
+    onTopologyChange?: () => void,
+  ): Promise<void> {
+    for (const level of levels) {
+      await this.waitForNextFrame();
+
+      if (!this.isGroupAttached(group)) {
+        return;
+      }
+
+      await this.loadLodLevel(
+        level.url,
         lod,
-        distance,
+        level.distance,
+        group,
         threeModule,
         sceneSettings,
         rendererMode,
         pathTracingEnabled,
         onTopologyChange,
       );
-    });
+    }
   }
 
   private async loadLodLevel(
     url: string,
     lod: InstanceType<ThreeModule['LOD']>,
     distance: number,
+    group: GroupInstance,
     threeModule: ThreeModule,
     sceneSettings: SceneSettings,
     rendererMode: RendererMode,
@@ -241,9 +299,19 @@ export class SceneContentService {
     onTopologyChange?: () => void,
   ): Promise<void> {
     const THREE = threeModule;
+    if (!this.isGroupAttached(group)) {
+      return;
+    }
+
     try {
       const gltf = (await this.assetService.loadGltf(url)) as { scene: GroupInstance };
       const scene = gltf.scene;
+
+      if (!this.isGroupAttached(group)) {
+        this.disposeGroup(scene, threeModule);
+        return;
+      }
+
       const floorMeshes: Array<InstanceType<ThreeModule['Mesh']>> = [];
 
       scene.traverse((object) => {
@@ -276,6 +344,44 @@ export class SceneContentService {
       lod.addLevel(scene, distance);
       onTopologyChange?.();
     } catch {}
+  }
+
+  private isGroupAttached(group: GroupInstance): boolean {
+    return group.parent !== null;
+  }
+
+  private disposeGroup(group: GroupInstance, threeModule: ThreeModule): void {
+    const THREE = threeModule;
+
+    group.traverse((object) => {
+      if (typeof object.userData?.[SSR_WEBGPU_REFLECTOR_NODE]?.dispose === 'function') {
+        object.userData[SSR_WEBGPU_REFLECTOR_NODE].dispose();
+      }
+
+      if (typeof (object as { dispose?: () => void }).dispose === 'function') {
+        (object as unknown as { dispose: () => void }).dispose();
+      }
+
+      if (object instanceof THREE.Mesh) {
+        object.geometry.dispose();
+        if (Array.isArray(object.material)) {
+          object.material.forEach((material) => material.dispose());
+        } else {
+          object.material.dispose();
+        }
+      }
+    });
+  }
+
+  private waitForNextFrame(): Promise<void> {
+    return new Promise((resolve) => {
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => resolve());
+        return;
+      }
+
+      setTimeout(resolve, 0);
+    });
   }
 
   private buildProceduralScene(
