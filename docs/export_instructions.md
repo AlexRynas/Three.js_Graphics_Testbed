@@ -10,6 +10,8 @@ To standardize assets for the Three.js test project, export all collections to G
   - export/low/, export/medium/, export/high/  (.glb outputs)
   - hdr/  (environment .exr/.hdr)
   - manifest.json
+- Install Git LFS in the repository before adding or updating anything under `public/collections/`.
+- Every committed file inside `public/collections/<collection-name>/` is stored through Git LFS, including `manifest.json` and thumbnails.
 - LOD naming: `meshName_LOD0`, `meshName_LOD1`, `meshName_LOD2` (`LOD0` = highest detail).
 - `manifestUrl` entries in `collections-index.json` may be absolute or relative to the index file.
 - `thumbnail`, `lods`, and `environment` entries inside `manifest.json` may be absolute or relative to that manifest file.
@@ -71,3 +73,4 @@ The canonical usage guide for the Blender export script lives in [../tools/READM
 - Create `manifest.json` per collection with these fields: `name`, `displayName`, `thumbnail`, `initialCameraPosition`, `initialControlTarget`, `lods`, and optional `environment`.
 - Keep `lods` ordered from highest to lowest detail so `lods[0]` is the nearest, highest-detail asset.
 - The canonical example manifest lives in `README.md`.
+- If pre-LFS collection files already exist in Git history, migrate the `public/collections/**` subtree with `git lfs migrate import --include="public/collections/**"` before sharing the rewritten history.

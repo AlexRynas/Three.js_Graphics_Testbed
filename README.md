@@ -102,6 +102,7 @@ Runtime notes:
 
 - Put the index at `public/collections-index.json`.
 - Put collection files under `public/collections/<collection-name>/...`.
+- Everything committed under `public/collections/` is managed through Git LFS, including manifests and thumbnails.
 - `manifestUrl` values in the index may be absolute or relative to `collections-index.json`.
 - `thumbnail`, `lods`, and `environment` values inside a manifest may be absolute or relative to that manifest file.
 - Missing `normalization` metadata defaults to identity axes and scale `1`, which preserves existing manifests that already store Three.js-ready values.
@@ -148,6 +149,22 @@ Example manifest:
 ```
 
 ## Development
+
+Install Git LFS before cloning or adding collection assets:
+
+```bash
+git lfs install
+```
+
+The repository tracks the entire `public/collections/` subtree through Git LFS. Keep `public/collections-index.json` in normal Git, but expect every file inside `public/collections/<collection-name>/...` to be stored as an LFS pointer.
+
+If collection files were committed before Git LFS was enabled, migrate that subtree once before pushing shared history:
+
+```bash
+git lfs migrate import --include="public/collections/**"
+```
+
+CI or deployment environments that clone the repository must fetch LFS objects before building or deploying.
 
 Start dev server:
 
