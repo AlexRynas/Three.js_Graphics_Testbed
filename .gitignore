@@ -43,3 +43,4 @@ __screenshots__/
 .DS_Store
 Thumbs.db
 tools/blender/__pycache__/*
+tools/blender/Blender_Resources.md
