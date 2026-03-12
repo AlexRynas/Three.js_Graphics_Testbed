@@ -91,12 +91,20 @@ Each collection manifest must include:
 - `initialCameraPosition`: initial camera position as `[x, y, z]`
 - `initialControlTarget`: initial orbit-controls target as `[x, y, z]`
 
+Each collection manifest may also include:
+
+- `normalization.sourceTool`: descriptive source tag such as `blender` or `unreal`
+- `normalization.viewAxes`: runtime axis remap for authored camera/target tuples
+- `normalization.viewScale`: uniform scale applied to authored camera/target tuples before runtime use
+- `normalization.rootScale`: uniform scale applied to the loaded collection root group
+
 Runtime notes:
 
 - Put the index at `public/collections-index.json`.
 - Put collection files under `public/collections/<collection-name>/...`.
 - `manifestUrl` values in the index may be absolute or relative to `collections-index.json`.
 - `thumbnail`, `lods`, and `environment` values inside a manifest may be absolute or relative to that manifest file.
+- Missing `normalization` metadata defaults to identity axes and scale `1`, which preserves existing manifests that already store Three.js-ready values.
 - Draco-compressed glTF and KTX2 texture payloads are supported. The required Three.js decoders/transcoders are copied into the build automatically.
 
 Example collections index:
@@ -120,6 +128,16 @@ Example manifest:
   "thumbnail": "thumbnails/the_shed.png",
   "initialCameraPosition": [0, 10, 30],
   "initialControlTarget": [0, 5, 0],
+  "normalization": {
+    "sourceTool": "blender",
+    "viewAxes": {
+      "x": "x",
+      "y": "z",
+      "z": "-y"
+    },
+    "viewScale": 1,
+    "rootScale": 1
+  },
   "lods": [
     "export/high/the_shed_LOD0.glb",
     "export/medium/the_shed_LOD1.glb",

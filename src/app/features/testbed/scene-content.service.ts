@@ -4,6 +4,10 @@ import { ReflectorForSSRPass } from 'three/examples/jsm/objects/ReflectorForSSRP
 
 import { AssetService } from './asset.service';
 import {
+  ResolvedCollectionNormalization,
+  resolveCollectionNormalization,
+} from './collection-normalization';
+import {
   CollectionManifest,
   CollectionRef,
   RendererMode,
@@ -42,6 +46,7 @@ type LoadCollectionResult = {
   procedural: boolean;
   initialCameraPosition: Vector3Tuple;
   initialControlTarget: Vector3Tuple;
+  normalization: ResolvedCollectionNormalization;
 };
 
 const PROCEDURAL_INITIAL_CAMERA_POSITION: Vector3Tuple = [0, 10, 30];
@@ -94,6 +99,7 @@ export class SceneContentService {
     const manifest = collection.manifestUrl
       ? await this.assetService.loadManifest(collection.manifestUrl)
       : null;
+    const normalization = resolveCollectionNormalization(manifest?.normalization);
 
     if (!scene) {
       const initialView = this.resolveInitialView(manifest);
@@ -103,6 +109,7 @@ export class SceneContentService {
         procedural: false,
         initialCameraPosition: initialView.initialCameraPosition,
         initialControlTarget: initialView.initialControlTarget,
+        normalization,
       };
     }
 
@@ -120,6 +127,7 @@ export class SceneContentService {
         procedural: true,
         initialCameraPosition: PROCEDURAL_INITIAL_CAMERA_POSITION,
         initialControlTarget: PROCEDURAL_INITIAL_CONTROL_TARGET,
+        normalization,
       };
     }
 
@@ -138,6 +146,8 @@ export class SceneContentService {
       pathTracingEnabled,
       params.onTopologyChange,
     );
+    group.scale.setScalar(normalization.rootScale);
+    group.updateMatrixWorld(true);
 
     const initialView = this.resolveInitialView(manifest);
 
@@ -147,6 +157,7 @@ export class SceneContentService {
       procedural: false,
       initialCameraPosition: initialView.initialCameraPosition,
       initialControlTarget: initialView.initialControlTarget,
+      normalization,
     };
   }
 

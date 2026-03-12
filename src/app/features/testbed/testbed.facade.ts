@@ -659,6 +659,7 @@ export class TestbedFacade {
       this.controls,
       result.initialCameraPosition,
       result.initialControlTarget,
+      result.normalization,
     );
     this.renderingSettingsService.applyPostProcessing(
       this.composerBundle,
@@ -856,7 +857,11 @@ export class TestbedFacade {
       this.hasPathTracingTopologySettingChange(settings, sceneSettings);
 
     if (topologyChanged) {
-      const rebuilt = this.pathTracerRuntimeService.setSceneWithPrep(this.scene, this.camera, settings);
+      const rebuilt = this.pathTracerRuntimeService.setSceneWithPrep(
+        this.scene,
+        this.camera,
+        settings,
+      );
       if (rebuilt) {
         this.forcePathTracerRebuild = false;
         this.pathTracerCameraRef = this.camera;

@@ -16,6 +16,10 @@ import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { VignetteShader } from 'three/examples/jsm/shaders/VignetteShader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
+import {
+  ResolvedCollectionNormalization,
+  transformCollectionVector,
+} from './collection-normalization';
 import { CapabilitySummary, RenderingSettings, RendererMode, Vector3Tuple } from './controls.model';
 import { RendererInstance } from './frame-stats-tracker';
 
@@ -162,13 +166,21 @@ export class TestbedRuntimeService {
     controls: OrbitControls | null,
     cameraPosition: Vector3Tuple,
     controlTarget: Vector3Tuple,
+    normalization: ResolvedCollectionNormalization,
   ): void {
     if (!camera || !controls) {
       return;
     }
 
-    camera.position.set(cameraPosition[0], cameraPosition[1], cameraPosition[2]);
-    controls.target.set(controlTarget[0], controlTarget[1], controlTarget[2]);
+    const runtimeCameraPosition = transformCollectionVector(cameraPosition, normalization);
+    const runtimeControlTarget = transformCollectionVector(controlTarget, normalization);
+
+    camera.position.set(
+      runtimeCameraPosition[0],
+      runtimeCameraPosition[1],
+      runtimeCameraPosition[2],
+    );
+    controls.target.set(runtimeControlTarget[0], runtimeControlTarget[1], runtimeControlTarget[2]);
     controls.update();
   }
 

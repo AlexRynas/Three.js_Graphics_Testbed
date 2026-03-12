@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.6.0'
+SCRIPT_VERSION = '0.7.0'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -935,6 +935,27 @@ def validate_packaging_inputs(paths: ExportPaths) -> None:
 
 def vector_to_tuple(vector: Vector) -> list[float]:
     return [round(float(vector.x), 6), round(float(vector.y), 6), round(float(vector.z), 6)]
+
+
+def resolve_scene_unit_scale() -> float:
+    unit_settings = getattr(bpy.context.scene, 'unit_settings', None)
+    scale_length = getattr(unit_settings, 'scale_length', None)
+    if isinstance(scale_length, (int, float)) and scale_length > 0:
+        return round(float(scale_length), 6)
+    return 1.0
+
+
+def build_manifest_normalization() -> dict[str, object]:
+    return {
+        'sourceTool': 'blender',
+        'viewAxes': {
+            'x': 'x',
+            'y': 'z',
+            'z': '-y',
+        },
+        'viewScale': resolve_scene_unit_scale(),
+        'rootScale': 1.0,
+    }
 
 
 def find_named_target_marker(source_collection: object, package_name: str) -> object | None:
@@ -2207,6 +2228,7 @@ def build_manifest(
         ],
         'initialCameraPosition': initial_camera_position,
         'initialControlTarget': initial_control_target,
+        'normalization': build_manifest_normalization(),
     }
     if environment_path is not None:
         manifest['environment'] = environment_path

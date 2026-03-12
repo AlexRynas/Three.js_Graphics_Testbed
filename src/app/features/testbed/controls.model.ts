@@ -86,6 +86,23 @@ export interface CollectionRef {
 
 export type Vector3Tuple = [number, number, number];
 
+export type CollectionSourceTool = 'threejs' | 'blender' | 'unreal' | 'unknown';
+
+export type CollectionAxisDirection = 'x' | 'y' | 'z' | '-x' | '-y' | '-z';
+
+export interface CollectionAxisRemap {
+  x: CollectionAxisDirection;
+  y: CollectionAxisDirection;
+  z: CollectionAxisDirection;
+}
+
+export interface CollectionNormalization {
+  sourceTool?: CollectionSourceTool;
+  viewAxes?: CollectionAxisRemap;
+  viewScale?: number;
+  rootScale?: number;
+}
+
 export interface CollectionManifest {
   name: string;
   displayName: string;
@@ -94,6 +111,7 @@ export interface CollectionManifest {
   environment?: string;
   initialCameraPosition: Vector3Tuple;
   initialControlTarget: Vector3Tuple;
+  normalization?: CollectionNormalization;
 }
 
 export interface Preset {
