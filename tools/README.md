@@ -32,6 +32,7 @@
 ```python
 run_testbed_export_stage('inspect')
 run_testbed_export_stage('analyze')
+run_testbed_export_stage('bake')
 run_testbed_export_stages('export-high', 'export-medium', 'export-low')
 run_testbed_export_stage('package')
 ```
