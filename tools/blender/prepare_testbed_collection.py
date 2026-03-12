@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.5.1'
+SCRIPT_VERSION = '0.6.0'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -71,6 +71,8 @@ class ExportConfig:
     low_texture_size: int = 1024
     medium_decimate_ratio: float = 0.55
     low_decimate_ratio: float = 0.28
+    min_decimate_seed_polygons: int = 24
+    min_decimate_target_polygons: int = 12
     thumbnail_size: int = 1024
     bake_behavior: str = 'auto'
     write_report: bool = True
@@ -104,6 +106,22 @@ class QualityPlan:
 
 
 @dataclass(slots=True)
+class QualitySource:
+    object_: object | None
+    generated: bool
+    seed_level: int | None = None
+
+
+@dataclass(slots=True)
+class DecimationDecision:
+    should_apply: bool
+    reason: str
+    seed_polygon_count: int
+    target_polygon_count: int | None
+    ratio: float | None
+
+
+@dataclass(slots=True)
 class MaterialAnalysis:
     name: str
     status: str
@@ -133,13 +151,19 @@ class MeshBundle:
             return self.existing_lods[min(self.existing_lods.keys())]
         return None
 
-    def resolve_for_level(self, level: int) -> tuple[object | None, bool]:
+    def resolve_for_level(self, level: int) -> QualitySource:
         if level in self.existing_lods:
-            return self.existing_lods[level], False
+            return QualitySource(object_=self.existing_lods[level], generated=False, seed_level=level)
         if level == 0 and self.source_object is not None:
-            return self.source_object, False
-        seed = self.best_seed()
-        return seed, seed is not None
+            return QualitySource(object_=self.source_object, generated=False, seed_level=None)
+        if 0 in self.existing_lods:
+            return QualitySource(object_=self.existing_lods[0], generated=True, seed_level=0)
+        if self.source_object is not None:
+            return QualitySource(object_=self.source_object, generated=True, seed_level=None)
+        if self.existing_lods:
+            seed_level = min(self.existing_lods.keys())
+            return QualitySource(object_=self.existing_lods[seed_level], generated=True, seed_level=seed_level)
+        return QualitySource(object_=None, generated=False, seed_level=None)
 
 
 @dataclass(slots=True)
@@ -966,6 +990,98 @@ def build_quality_plans(paths: ExportPaths, config: ExportConfig) -> list[Qualit
     ]
 
 
+def count_mesh_polygons(object_: object) -> int:
+    mesh = getattr(object_, 'data', None)
+    polygons = getattr(mesh, 'polygons', None)
+    if polygons is None:
+        return 0
+    return len(polygons)
+
+
+def build_decimation_decision(
+    source_object: object,
+    quality: QualityPlan,
+    quality_source: QualitySource,
+    config: ExportConfig,
+) -> DecimationDecision:
+    seed_polygon_count = count_mesh_polygons(source_object)
+    ratio = quality.decimate_ratio
+    if ratio is None:
+        return DecimationDecision(
+            should_apply=False,
+            reason='quality level does not request decimation',
+            seed_polygon_count=seed_polygon_count,
+            target_polygon_count=None,
+            ratio=None,
+        )
+
+    target_polygon_count = max(int(round(seed_polygon_count * ratio)), 0)
+    if quality_source.seed_level is not None and quality_source.seed_level > 0:
+        return DecimationDecision(
+            should_apply=False,
+            reason=f'seed mesh is already an authored LOD{quality_source.seed_level}',
+            seed_polygon_count=seed_polygon_count,
+            target_polygon_count=target_polygon_count,
+            ratio=ratio,
+        )
+    if seed_polygon_count < config.min_decimate_seed_polygons:
+        return DecimationDecision(
+            should_apply=False,
+            reason=(
+                f'seed mesh is already sparse ({seed_polygon_count} polygons < '
+                f'{config.min_decimate_seed_polygons})'
+            ),
+            seed_polygon_count=seed_polygon_count,
+            target_polygon_count=target_polygon_count,
+            ratio=ratio,
+        )
+    if target_polygon_count < config.min_decimate_target_polygons:
+        return DecimationDecision(
+            should_apply=False,
+            reason=(
+                f'requested target would be too small ({target_polygon_count} polygons < '
+                f'{config.min_decimate_target_polygons})'
+            ),
+            seed_polygon_count=seed_polygon_count,
+            target_polygon_count=target_polygon_count,
+            ratio=ratio,
+        )
+    return DecimationDecision(
+        should_apply=True,
+        reason='seed mesh passed decimation safety checks',
+        seed_polygon_count=seed_polygon_count,
+        target_polygon_count=target_polygon_count,
+        ratio=ratio,
+    )
+
+
+def log_decimation_decision(
+    source_object: object,
+    object_copy: object,
+    quality: QualityPlan,
+    quality_source: QualitySource,
+    decision: DecimationDecision,
+    report: ExportReport,
+) -> None:
+    seed_label = (
+        f'LOD{quality_source.seed_level}'
+        if quality_source.seed_level is not None
+        else 'source'
+    )
+    ratio_label = f'{decision.ratio:.2f}' if decision.ratio is not None else 'n/a'
+    target_label = (
+        str(decision.target_polygon_count)
+        if decision.target_polygon_count is not None
+        else 'n/a'
+    )
+    action = 'Applied' if decision.should_apply else 'Skipped'
+    report.info(
+        f'{action} DECIMATE for "{object_copy.name}" from "{source_object.name}" '
+        f'(seed={seed_label}, ratio={ratio_label}, seed_polygons={decision.seed_polygon_count}, '
+        f'target_polygons={target_label}): {decision.reason}.'
+    )
+
+
 def build_mesh_bundles(mesh_objects: list[object]) -> dict[str, MeshBundle]:
     bundles: dict[str, MeshBundle] = {}
     for object_ in mesh_objects:
@@ -1374,7 +1490,8 @@ def attach_orm_nodes(material: object, orm_image: object, report: ExportReport) 
 def duplicate_object_for_quality(
     source_object: object,
     quality: QualityPlan,
-    generated: bool,
+    quality_source: QualitySource,
+    config: ExportConfig,
     material_cache: dict[tuple[str, str], object],
     analysis_cache: dict[str, MaterialAnalysis],
     staging_dir: Path,
@@ -1391,10 +1508,13 @@ def duplicate_object_for_quality(
     base_name = base_name_match.group('base') if base_name_match else source_object.name
     object_copy.name = f'{base_name}_LOD{quality.level}'
 
-    if generated and quality.decimate_ratio is not None:
-        modifier = object_copy.modifiers.new(name='TestbedDecimate', type='DECIMATE')
-        modifier.ratio = quality.decimate_ratio
-        modifier.use_collapse_triangulate = True
+    if quality_source.generated and quality.decimate_ratio is not None:
+        decision = build_decimation_decision(source_object, quality, quality_source, config)
+        if decision.should_apply:
+            modifier = object_copy.modifiers.new(name='TestbedDecimate', type='DECIMATE')
+            modifier.ratio = quality.decimate_ratio
+            modifier.use_collapse_triangulate = True
+        log_decimation_decision(source_object, object_copy, quality, quality_source, decision, report)
 
     triangulate_modifier = object_copy.modifiers.new(name='TestbedTriangulate', type='TRIANGULATE')
     if hasattr(triangulate_modifier, 'keep_custom_normals'):
@@ -1460,6 +1580,7 @@ def export_glb(filepath: Path, report: ExportReport) -> None:
 def build_quality_objects(
     bundles: dict[str, MeshBundle],
     quality: QualityPlan,
+    config: ExportConfig,
     material_cache: dict[tuple[str, str], object],
     analysis_cache: dict[str, MaterialAnalysis],
     staging_dir: Path,
@@ -1468,7 +1589,8 @@ def build_quality_objects(
 ) -> list[object]:
     quality_objects: list[object] = []
     for bundle in bundles.values():
-        source_object, generated = bundle.resolve_for_level(quality.level)
+        quality_source = bundle.resolve_for_level(quality.level)
+        source_object = quality_source.object_
         if source_object is None:
             report.warn(f'No mesh source could be resolved for base object "{bundle.base_name}" at LOD{quality.level}.')
             continue
@@ -1476,7 +1598,8 @@ def build_quality_objects(
             duplicate_object_for_quality(
                 source_object,
                 quality,
-                generated,
+                quality_source,
+                config,
                 material_cache,
                 analysis_cache,
                 staging_dir,
@@ -2024,6 +2147,7 @@ def export_quality_level(
     bundles: dict[str, MeshBundle],
     analysis_cache: dict[str, MaterialAnalysis],
     staging_dir: Path,
+    config: ExportConfig,
     report: ExportReport,
 ) -> bool:
     material_cache: dict[tuple[str, str], object] = {}
@@ -2034,6 +2158,7 @@ def export_quality_level(
     quality_objects = build_quality_objects(
         bundles,
         quality,
+        config,
         material_cache,
         analysis_cache,
         staging_dir,
@@ -2410,6 +2535,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                     stage_state['bundles'],
                     stage_state['analysis_cache'],
                     staging_dir,
+                    config,
                     report,
                 ):
                     raise RuntimeError(f'The {quality.label} export stage did not produce any objects to export.')
@@ -2549,7 +2675,8 @@ def print_console_usage() -> None:
     print('Optional keyword arguments:')
     print('  collection_name_override, display_name_override, export_root_override,')
     print('  high_texture_size, medium_texture_size, low_texture_size,')
-    print('  medium_decimate_ratio, low_decimate_ratio, thumbnail_size,')
+    print('  medium_decimate_ratio, low_decimate_ratio, min_decimate_seed_polygons,')
+    print('  min_decimate_target_polygons, thumbnail_size,')
     print('  bake_behavior, write_report, verify_autobake_adapter, log_path_override')
 
 

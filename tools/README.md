@@ -44,8 +44,11 @@ run_testbed_export_stage('package')
 - If you need the structured result object, call `get_last_testbed_export_result()` or inspect `testbed_export.last_result`.
 - If you explicitly want the helper to return the result object in the console, pass `echo_result=True`.
 - If you want validation, material diagnostics, and automatic warning repair in the log, run `inspect` and `repair` explicitly before `bake`, `export-*`, or `package`.
+- When `export-medium` or `export-low` has to generate a missing LOD, the script now skips DECIMATE when the seed mesh is already sparse or when the requested result would collapse below a safe polygon floor. Those decisions are written to the detailed log.
+- Generated LODs also avoid cascading DECIMATE from authored `*_LOD1` or `*_LOD2` meshes. If you want exact medium and low results, keep authoring explicit `*_LOD0`, `*_LOD1`, and `*_LOD2` objects in Blender.
 - During `export-*`, Blender may log temporary mesh datablock names such as `TESTBED_BackWall_Mesh.002` even if the scene object currently shows `.001` in the UI. This is expected: the exporter duplicates meshes into a temporary collection before writing the GLB, and Blender auto-increments datablock suffixes for those transient export copies.
 - The remaining Blender glTF warning `More than one shader node tex image used for a texture` is also expected for the baked test scene. The baked materials use one packed Channel Packing texture that feeds both Roughness and Metallic through a `Separate Color` node, and Blender's exporter emits this warning while gathering those sockets for a single metallic-roughness texture. In this workflow, that warning is harmless and does not mean the wrong mesh or wrong textures were exported.
+- Optional decimation safeguards can be tuned from the Python Console with `min_decimate_seed_polygons` and `min_decimate_target_polygons` in addition to `medium_decimate_ratio` and `low_decimate_ratio`.
 
 ### Compile check with Blender's Python
 
