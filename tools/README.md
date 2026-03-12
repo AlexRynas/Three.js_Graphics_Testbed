@@ -23,7 +23,8 @@
 - The `bake` stage runs Auto Bake 2 when needed, enables Final Material, Remove Nodes, Final Object, and Reuse Elements, then completes the session through Auto Bake 2's Confirm flow with Swap Object enabled.
 - The three `export-*` stages each write a single GLB variant.
 - The `package` stage renders the thumbnail, copies the HDR environment, writes `manifest.json`, writes the text report, and prints the `collections-index.json` snippet.
-- Later stages still recompute the in-memory scene context they depend on, but they avoid running unrelated export steps and print a per-stage warning/error summary.
+- Stages are isolated. Running `export-*`, `bake`, or `package` no longer emits separate `inspect` or `analyze` stage headers automatically.
+- When a stage needs scene context internally, it recomputes only the minimum state it needs without treating other stages as prerequisites.
 - Optional keyword arguments can be passed from the Python Console, for example `run_testbed_export_stage('bake', bake_behavior='manual')` or `run_testbed_export_stages('inspect', 'analyze', collection_name_override='MyCollection')`.
 - Blender's Python console does not expose a reliable no-truncation setting for very large output. On Windows, the System Console buffer can be increased, but a log file is the more dependable path for full capture.
 
@@ -40,6 +41,9 @@ run_testbed_export_stage('package')
 - After each command, the console prints the path to the detailed log file.
 - If you need the structured result object, call `get_last_testbed_export_result()` or inspect `testbed_export.last_result`.
 - If you explicitly want the helper to return the result object in the console, pass `echo_result=True`.
+- If you want validation and material diagnostics in the log, run `inspect` and `analyze` explicitly before `bake`, `export-*`, or `package`.
+- During `export-*`, Blender may log temporary mesh datablock names such as `TESTBED_BackWall_Mesh.002` even if the scene object currently shows `.001` in the UI. This is expected: the exporter duplicates meshes into a temporary collection before writing the GLB, and Blender auto-increments datablock suffixes for those transient export copies.
+- The remaining Blender glTF warning `More than one shader node tex image used for a texture` is also expected for the baked test scene. The baked materials use one packed Channel Packing texture that feeds both Roughness and Metallic through a `Separate Color` node, and Blender's exporter emits this warning while gathering those sockets for a single metallic-roughness texture. In this workflow, that warning is harmless and does not mean the wrong mesh or wrong textures were exported.
 
 ### Compile check with Blender's Python
 

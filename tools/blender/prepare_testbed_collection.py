@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.3.7'
+SCRIPT_VERSION = '0.4.0'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -541,7 +541,11 @@ def configure_cycles_gpu_render(report: ExportReport) -> None:
     report.summary('Configured Blender render engine to Cycles with GPU Compute.')
 
 
-def validate_scene(source_collection: object, report: ExportReport) -> list[object]:
+def validate_scene(
+    source_collection: object,
+    report: ExportReport,
+    emit_warnings: bool = True,
+) -> list[object]:
     if not bpy.data.filepath:
         raise RuntimeError('The .blend file must be saved before export can run.')
 
@@ -558,24 +562,24 @@ def validate_scene(source_collection: object, report: ExportReport) -> list[obje
         raise RuntimeError('The source collection does not contain any visible mesh objects to export.')
 
     for object_ in mesh_objects:
-        if object_.library is not None:
+        if emit_warnings and object_.library is not None:
             report.warn(f'Object "{object_.name}" is linked from an external library; export will use the evaluated object state.')
 
-        if any(abs(value - 1.0) > 0.0001 for value in object_.scale[:]):
+        if emit_warnings and any(abs(value - 1.0) > 0.0001 for value in object_.scale[:]):
             report.warn(
                 f'Object "{object_.name}" has unapplied scale. '
                 'Apply scale before export so generated LODs and bounds stay consistent.'
             )
 
         mesh = object_.data
-        if hasattr(mesh, 'uv_layers') and len(mesh.uv_layers) == 0:
+        if emit_warnings and hasattr(mesh, 'uv_layers') and len(mesh.uv_layers) == 0:
             report.warn(f'Object "{object_.name}" has no UV map; baking and texture export may fail.')
 
-        if not object_.material_slots or all(slot.material is None for slot in object_.material_slots):
+        if emit_warnings and (not object_.material_slots or all(slot.material is None for slot in object_.material_slots)):
             report.warn(f'Object "{object_.name}" has no assigned material slots.')
 
     world = bpy.context.scene.world
-    if world is None or not world.use_nodes or world.node_tree is None:
+    if emit_warnings and (world is None or not world.use_nodes or world.node_tree is None):
         report.warn('The active World does not use nodes; no HDR environment file will be emitted.')
 
     return mesh_objects
@@ -699,10 +703,19 @@ def build_mesh_bundles(mesh_objects: list[object]) -> dict[str, MeshBundle]:
 
 
 def resolve_texture_hints(name: str) -> set[str]:
-    normalized = re.sub(r'[^a-z0-9]+', '', name.lower())
+    normalized = re.sub(r'([a-z0-9])([A-Z])', r'\1 \2', name)
+    tokens = {
+        token
+        for token in re.split(r'[^a-z0-9]+', normalized.lower())
+        if token
+    }
     hits: set[str] = set()
     for key, fragments in IMAGE_NAME_HINTS.items():
-        if any(fragment in normalized for fragment in fragments):
+        normalized_fragments = {
+            re.sub(r'[^a-z0-9]+', '', fragment.lower())
+            for fragment in fragments
+        }
+        if any(fragment in tokens for fragment in normalized_fragments):
             hits.add(key)
     return hits
 
@@ -1017,16 +1030,23 @@ def duplicate_materials_for_object(
             if image_variant is not None:
                 node.image = image_variant
 
-        orm_variant = create_orm_image(
-            analysis,
-            staging_dir / quality.label,
-            f'{slugify(material_copy.name)}_orm',
-            quality.texture_size,
-            temp_images,
-            report,
+        should_attach_orm = (
+            analysis.orm_image is not None
+            or analysis.ao_image is not None
+            or analysis.roughness_image is None
+            or analysis.metallic_image is None
         )
-        if orm_variant is not None:
-            attach_orm_nodes(material_copy, orm_variant, report)
+        if should_attach_orm:
+            orm_variant = create_orm_image(
+                analysis,
+                staging_dir / quality.label,
+                f'{slugify(material_copy.name)}_orm',
+                quality.texture_size,
+                temp_images,
+                report,
+            )
+            if orm_variant is not None:
+                attach_orm_nodes(material_copy, orm_variant, report)
 
 
 def attach_orm_nodes(material: object, orm_image: object, report: ExportReport) -> None:
@@ -1093,6 +1113,10 @@ def duplicate_object_for_quality(
         modifier = object_copy.modifiers.new(name='TestbedDecimate', type='DECIMATE')
         modifier.ratio = quality.decimate_ratio
         modifier.use_collapse_triangulate = True
+
+    triangulate_modifier = object_copy.modifiers.new(name='TestbedTriangulate', type='TRIANGULATE')
+    if hasattr(triangulate_modifier, 'keep_custom_normals'):
+        triangulate_modifier.keep_custom_normals = True
 
     duplicate_materials_for_object(
         object_copy,
@@ -1248,7 +1272,7 @@ def detect_environment_image(report: ExportReport) -> Path | None:
             return None
         return image_path
 
-    report.warn('No Environment Texture node was found in the active World; the runtime will fall back to /monochrome_studio_03_1k.hdr.')
+    report.info('No Environment Texture node was found in the active World; the runtime will fall back to /monochrome_studio_03_1k.hdr.')
     return None
 
 
@@ -1908,12 +1932,28 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             'quality_plans': None,
             'autobake': None,
             'bake_required_materials': None,
+            'cycles_configured': False,
+            'autobake_described': False,
         }
 
-        def inspect_stage() -> None:
+        def ensure_scene_context(
+            *,
+            emit_warnings: bool = False,
+            require_cycles: bool = False,
+        ) -> None:
+            if require_cycles and not stage_state['cycles_configured']:
+                configure_cycles_gpu_render(report)
+                stage_state['cycles_configured'] = True
+
+            if stage_state['mesh_objects'] is not None:
+                return
+
             source_collection, package_name, display_name = resolve_source_collection(config, report)
-            configure_cycles_gpu_render(report)
-            mesh_objects = validate_scene(source_collection, report)
+            mesh_objects = validate_scene(
+                source_collection,
+                report,
+                emit_warnings=emit_warnings,
+            )
             assert blend_path is not None
             paths = build_output_paths(blend_path, package_name, config)
             create_package_layout(paths)
@@ -1922,7 +1962,6 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                 source_collection,
                 package_name,
             )
-            report.info(f'Using source collection "{source_collection.name}" and package id "{package_name}".')
             stage_state.update(
                 {
                     'source_collection': source_collection,
@@ -1934,30 +1973,33 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                     'initial_control_target': initial_control_target,
                 }
             )
-            report.summary(
-                f'Inspect summary: collection="{source_collection.name}", visible meshes={len(mesh_objects)}, package id="{package_name}".'
+
+        def invalidate_analysis_context() -> None:
+            stage_state.update(
+                {
+                    'analysis_cache': None,
+                    'bundles': None,
+                    'quality_plans': None,
+                    'autobake': None,
+                    'bake_required_materials': None,
+                    'autobake_described': False,
+                }
             )
 
-        def analyze_stage() -> None:
+        def ensure_analysis_context() -> None:
+            ensure_scene_context()
+            if stage_state['analysis_cache'] is not None:
+                return
+
             mesh_objects = stage_state['mesh_objects']
             assert blend_path is not None
             analysis_cache = analyze_materials(mesh_objects, blend_path.parent, report)
             bundles = build_mesh_bundles(mesh_objects)
             quality_plans = build_quality_plans(stage_state['paths'], config)
             autobake = AutoBake2Adapter(report)
-            autobake.describe()
             bake_required_materials = [
                 analysis for analysis in analysis_cache.values() if analysis.status == 'bake-required'
             ]
-            report.summary(
-                'Material analysis summary: '
-                f'{sum(1 for analysis in analysis_cache.values() if analysis.status == "ready")} ready, '
-                f'{sum(1 for analysis in analysis_cache.values() if analysis.status == "partial")} partial, '
-                f'{len(bake_required_materials)} bake-required.'
-            )
-            report.summary(f'LOD bundle count: {len(bundles)}')
-            log_material_analysis_details(analysis_cache, report)
-            log_object_analysis_details(mesh_objects, bundles, report)
             stage_state.update(
                 {
                     'analysis_cache': analysis_cache,
@@ -1968,7 +2010,56 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                 }
             )
 
+        def describe_autobake_once() -> None:
+            ensure_analysis_context()
+            if stage_state['autobake_described']:
+                return
+            stage_state['autobake'].describe()
+            stage_state['autobake_described'] = True
+
+        def inspect_stage() -> None:
+            invalidate_analysis_context()
+            stage_state.update(
+                {
+                    'source_collection': None,
+                    'package_name': None,
+                    'display_name': None,
+                    'mesh_objects': None,
+                    'paths': None,
+                    'initial_camera_position': None,
+                    'initial_control_target': None,
+                }
+            )
+            ensure_scene_context(emit_warnings=True, require_cycles=True)
+            source_collection = stage_state['source_collection']
+            package_name = stage_state['package_name']
+            mesh_objects = stage_state['mesh_objects']
+            report.info(f'Using source collection "{source_collection.name}" and package id "{package_name}".')
+            report.summary(
+                f'Inspect summary: collection="{source_collection.name}", visible meshes={len(mesh_objects)}, package id="{package_name}".'
+            )
+
+        def analyze_stage() -> None:
+            ensure_analysis_context()
+            describe_autobake_once()
+            mesh_objects = stage_state['mesh_objects']
+            analysis_cache = stage_state['analysis_cache']
+            bundles = stage_state['bundles']
+            bake_required_materials = stage_state['bake_required_materials']
+            report.summary(
+                'Material analysis summary: '
+                f'{sum(1 for analysis in analysis_cache.values() if analysis.status == "ready")} ready, '
+                f'{sum(1 for analysis in analysis_cache.values() if analysis.status == "partial")} partial, '
+                f'{len(bake_required_materials)} bake-required.'
+            )
+            report.summary(f'LOD bundle count: {len(bundles)}')
+            log_material_analysis_details(analysis_cache, report)
+            log_object_analysis_details(mesh_objects, bundles, report)
+
         def bake_stage() -> None:
+            ensure_scene_context(require_cycles=True)
+            ensure_analysis_context()
+            describe_autobake_once()
             autobake = stage_state['autobake']
             mesh_objects = stage_state['mesh_objects']
             bake_required_materials = stage_state['bake_required_materials']
@@ -1983,6 +2074,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                 )
                 if not autobake.configure_session(mesh_objects, mesh_objects, config.high_texture_size):
                     return
+                invalidate_analysis_context()
                 return autobake.start_session()
             if bake_required_materials and config.bake_behavior == 'manual':
                 report.warn(
@@ -1992,6 +2084,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             report.summary('No bake action was required for the selected scene and bake settings.')
 
         def export_single_stage(stage_name: str) -> None:
+            ensure_analysis_context()
             quality_lookup = {quality.label: quality for quality in stage_state['quality_plans']}
             quality = quality_lookup[stage_name.removeprefix('export-')]
             staging_dir = Path(tempfile.mkdtemp(prefix=f'{stage_state["package_name"]}_blendprep_'))
@@ -2008,6 +2101,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                 shutil.rmtree(staging_dir, ignore_errors=True)
 
         def package_stage() -> None:
+            ensure_scene_context(require_cycles=True)
             paths = stage_state['paths']
             validate_packaging_inputs(paths)
             render_thumbnail(paths, config.thumbnail_size, report)
@@ -2024,6 +2118,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             write_manifest(manifest, paths, report)
             index_snippet = build_index_snippet(stage_state['package_name'], stage_state['display_name'])
             if config.write_report:
+                autobake_status = stage_state['autobake'].status if stage_state['autobake'] is not None else AutoBake2Adapter(report).status
                 write_report_file(
                     paths,
                     stage_state['package_name'],
@@ -2031,21 +2126,15 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                     manifest,
                     index_snippet,
                     report,
-                    stage_state['autobake'].status,
+                    autobake_status,
                     requested_stages,
                 )
             print_console_summary(paths, index_snippet, report)
 
-        if 'inspect' in requested_stages or any(
-            stage_name in requested_stages
-            for stage_name in ('analyze', 'bake', 'export-high', 'export-medium', 'export-low', 'package')
-        ):
+        if 'inspect' in requested_stages:
             run_stage('inspect', report, inspect_stage)
 
-        if 'analyze' in requested_stages or any(
-            stage_name in requested_stages
-            for stage_name in ('bake', 'export-high', 'export-medium', 'export-low', 'package')
-        ):
+        if 'analyze' in requested_stages:
             run_stage('analyze', report, analyze_stage)
 
         if 'bake' in requested_stages:
@@ -2129,7 +2218,7 @@ def print_console_usage() -> None:
     print('  list_testbed_export_stages()')
     print("  run_testbed_export_stage('inspect')")
     print("  run_testbed_export_stages('inspect', 'analyze')")
-    print("  run_testbed_export_stage('bake', bake_behavior='manual')")
+    print("  run_testbed_export_stage('bake')")
     print(r"  run_testbed_export_stage('inspect', log_path_override='F:/tmp/testbed-inspect.log')")
     print("  run_testbed_export_stages('export-high', 'export-medium', 'export-low')")
     print("  run_testbed_export_stage('package')")
