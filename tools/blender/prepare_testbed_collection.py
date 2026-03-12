@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.7.3'
+SCRIPT_VERSION = '0.7.4'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -660,34 +660,7 @@ def count_excluded_mesh_objects(collection: object) -> int:
     )
 
 
-def summarize_scene_object_visibility() -> dict[str, int]:
-    counts = {
-        'eligible': 0,
-        'viewport_hidden': 0,
-        'render_disabled': 0,
-        'hidden_and_disabled': 0,
-        'excluded': 0,
-    }
-
-    for object_ in bpy.context.scene.objects:
-        viewport_hidden = object_is_viewport_hidden(object_)
-        render_disabled = object_is_render_disabled(object_)
-        if viewport_hidden and render_disabled:
-            counts['hidden_and_disabled'] += 1
-            counts['excluded'] += 1
-        elif viewport_hidden:
-            counts['viewport_hidden'] += 1
-            counts['excluded'] += 1
-        elif render_disabled:
-            counts['render_disabled'] += 1
-            counts['excluded'] += 1
-        else:
-            counts['eligible'] += 1
-
-    return counts
-
-
-def resolve_source_collection(config: ExportConfig, report: ExportReport) -> tuple[object, str, str]:
+def resolve_source_collection(config: ExportConfig, report: ExportReport) -> tuple[object, str, str, str]:
     scene = bpy.context.scene
     active_layer_collection = getattr(bpy.context.view_layer, 'active_layer_collection', None)
     active_collection = active_layer_collection.collection if active_layer_collection else None
@@ -704,17 +677,20 @@ def resolve_source_collection(config: ExportConfig, report: ExportReport) -> tup
 
     if named_collection is not None:
         source_collection = named_collection
+        selection_reason = 'named override'
     elif active_collection is not None and object_has_meshes(active_collection):
         source_collection = active_collection
+        selection_reason = 'active collection'
     else:
         source_collection = next(
             (collection for collection in bpy.data.collections if object_has_meshes(collection)),
             scene.collection,
         )
+        selection_reason = 'first populated collection fallback'
 
     collection_id = config.collection_name_override or source_collection.name or Path(bpy.data.filepath).stem
     display_name = config.display_name_override or collection_id
-    return source_collection, collection_id, display_name
+    return source_collection, collection_id, display_name, selection_reason
 
 
 def configure_cycles_gpu_render(report: ExportReport) -> None:
@@ -2485,7 +2461,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             if stage_state['mesh_objects'] is not None:
                 return
 
-            source_collection, collection_id, display_name = resolve_source_collection(config, report)
+            source_collection, collection_id, display_name, selection_reason = resolve_source_collection(config, report)
             mesh_objects = validate_scene(
                 source_collection,
                 report,
@@ -2506,6 +2482,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                     'collection_id': collection_id,
                     'package_name': package_name,
                     'display_name': display_name,
+                    'selection_reason': selection_reason,
                     'mesh_objects': mesh_objects,
                     'paths': paths,
                     'initial_camera_position': initial_camera_position,
@@ -2564,6 +2541,7 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
                     'collection_id': None,
                     'package_name': None,
                     'display_name': None,
+                    'selection_reason': None,
                     'mesh_objects': None,
                     'paths': None,
                     'initial_camera_position': None,
@@ -2576,25 +2554,25 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             source_collection = stage_state['source_collection']
             collection_id = stage_state['collection_id']
             package_name = stage_state['package_name']
+            selection_reason = stage_state['selection_reason']
             mesh_objects = stage_state['mesh_objects']
             analysis_cache = stage_state['analysis_cache']
             bundles = stage_state['bundles']
             bake_required_materials = stage_state['bake_required_materials']
-            scene_visibility = summarize_scene_object_visibility()
             excluded_mesh_count = count_excluded_mesh_objects(source_collection)
+            collection_source_label = (
+                'currently active collection'
+                if selection_reason == 'active collection'
+                else selection_reason
+            )
             report.info(
-                f'Using source collection "{source_collection.name}", collection id "{collection_id}", '
+                f'Using source collection "{source_collection.name}" '
+                f'({collection_source_label}), collection id "{collection_id}", '
                 f'and package slug "{package_name}".'
             )
             report.summary(
-                f'Scene object visibility: eligible={scene_visibility["eligible"]}, excluded={scene_visibility["excluded"]} '
-                f'(viewport-hidden={scene_visibility["viewport_hidden"]}, '
-                f'render-disabled={scene_visibility["render_disabled"]}, '
-                f'both={scene_visibility["hidden_and_disabled"]}).'
-            )
-            report.summary(
-                f'Inspect summary: collection="{source_collection.name}", eligible meshes={len(mesh_objects)}, '
-                f'excluded meshes={excluded_mesh_count}, '
+                f'Inspect summary: collection="{source_collection.name}", eligible meshes in source collection={len(mesh_objects)}, '
+                f'excluded meshes in source collection={excluded_mesh_count}, '
                 f'collection id="{collection_id}", package slug="{package_name}".'
             )
             report.summary(
