@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.7.0'
+SCRIPT_VERSION = '0.7.2'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -736,6 +736,22 @@ def object_has_material_warning(object_: object) -> bool:
     return bool(not object_.material_slots or all(slot.material is None for slot in object_.material_slots))
 
 
+def ensure_single_user_mesh_data(object_: object, report: ExportReport, *, reason: str) -> bool:
+    mesh = getattr(object_, 'data', None)
+    if mesh is None or not hasattr(mesh, 'copy'):
+        return False
+    if getattr(mesh, 'users', 0) <= 1:
+        return False
+
+    original_name = getattr(mesh, 'name', '<unnamed>')
+    object_.data = mesh.copy()
+    report.info(
+        f'Repair split shared mesh data for "{object_.name}" from "{original_name}" '
+        f'before {reason}.'
+    )
+    return True
+
+
 @contextmanager
 def activate_object(object_: object) -> object:
     with preserve_selection():
@@ -766,7 +782,7 @@ def make_object_data_local(object_: object, report: ExportReport) -> object:
             material = slot.material
             if material is not None and getattr(material, 'library', None) is not None and hasattr(material, 'make_local'):
                 material.make_local()
-        report.summary(f'Made linked object "{object_.name}" local for repair operations.')
+        report.info(f'Made linked object "{object_.name}" local for repair operations.')
     except Exception as error:
         report.warn(f'Could not make linked object "{object_.name}" local automatically: {error}')
     return object_
@@ -776,15 +792,19 @@ def apply_object_scale(object_: object, report: ExportReport) -> bool:
     if not object_has_unapplied_scale(object_):
         return False
 
+    ensure_single_user_mesh_data(object_, report, reason='applying scale')
+
     with activate_object(object_):
         bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-    report.summary(f'Applied scale for object "{object_.name}".')
+    report.info(f'Applied scale for object "{object_.name}".')
     return True
 
 
 def ensure_object_uv_map(object_: object, report: ExportReport) -> bool:
     if not object_has_uv_warning(object_):
         return False
+
+    ensure_single_user_mesh_data(object_, report, reason='generating a UV map')
 
     mesh = object_.data
     mesh.uv_layers.new(name='UVMap')
@@ -794,7 +814,7 @@ def ensure_object_uv_map(object_: object, report: ExportReport) -> bool:
             bpy.ops.mesh.select_all(action='SELECT')
             bpy.ops.uv.smart_project()
             bpy.ops.object.mode_set(mode='OBJECT')
-        report.summary(f'Generated a UV map for object "{object_.name}" with Smart UV Project.')
+        report.info(f'Generated a UV map for object "{object_.name}" with Smart UV Project.')
         return True
     except Exception as error:
         report.warn(f'Created a UV layer for object "{object_.name}", but Smart UV Project failed: {error}')
@@ -804,6 +824,8 @@ def ensure_object_uv_map(object_: object, report: ExportReport) -> bool:
 def ensure_object_material_slot(object_: object, report: ExportReport) -> bool:
     if not object_has_material_warning(object_):
         return False
+
+    ensure_single_user_mesh_data(object_, report, reason='assigning default materials')
 
     mesh = object_.data
     material = bpy.data.materials.get(f'{sanitize_package_name(object_.name)}_Material')
@@ -823,7 +845,7 @@ def ensure_object_material_slot(object_: object, report: ExportReport) -> bool:
         if not assigned:
             mesh.materials.append(material)
 
-    report.summary(f'Assigned default material "{material.name}" to object "{object_.name}".')
+    report.info(f'Assigned default material "{material.name}" to object "{object_.name}".')
     return True
 
 
@@ -846,7 +868,7 @@ def ensure_world_uses_nodes(report: ExportReport) -> bool:
         changed = True
 
     if changed:
-        report.summary(f'Enabled World nodes for "{world.name}".')
+        report.info(f'Enabled World nodes for "{world.name}".')
     return changed
 
 
