@@ -1,12 +1,2 @@
 [
-    {
-        "id": "TestbedHouseSource",
-        "displayName": "Testbed House Source",
-        "manifestUrl": "collections/TestbedHouseSource/manifest.json"
-    },
-    {
-        "id": "TheShed",
-        "displayName": "The Shed",
-        "manifestUrl": "collections/TheShed/manifest.json"
-    }
 ]
