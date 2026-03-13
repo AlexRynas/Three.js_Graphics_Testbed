@@ -25,7 +25,7 @@
 - The `repair` stage automatically fixes only the objects classified as `repair-required` by making linked assets local when possible, applying scale, generating UV maps, assigning default materials, and enabling World nodes.
 - The `bake` stage runs Auto Bake 2 only for objects classified as `bake-required`, enables Final Material, Remove Nodes, Final Object, and Reuse Elements, completes the session through Auto Bake 2's Confirm flow with Swap Object enabled, and then saves any dirty baked images to disk automatically.
 - The three `export-*` stages each write a single GLB variant using only objects currently classified as `ready`.
-- The `package` stage renders the thumbnail, copies the HDR environment, writes `manifest.json`, writes the text report, and prints the `collections-index.json` snippet.
+- The `package` stage renders the thumbnail, renders the evaluated World shader to an equirectangular EXR environment map, writes `manifest.json`, writes the text report, and prints the `collections-index.json` snippet.
 - The `repair`, `bake`, `export-*`, and `package` stages ignore any object that is hidden in the viewport, disabled for rendering, or both.
 - Stages are isolated. Running `export-*`, `bake`, or `package` no longer emits separate `inspect` or `repair` stage headers automatically.
 - When a stage needs scene context internally, it recomputes only the minimum state it needs without treating other stages as prerequisites.

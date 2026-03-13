@@ -24,7 +24,7 @@ except ImportError as error:
     )
 
 
-SCRIPT_VERSION = '0.8.0'
+SCRIPT_VERSION = '0.9.0'
 SESSION_LOG_FILENAME_SUFFIX = '_prepare_testbed_collection_session.log'
 CONTROL_TARGET_MARKERS = (
     'EXPORT_CONTROL_TARGET',
@@ -67,7 +67,7 @@ STAGE_DESCRIPTIONS = {
     'export-high': 'Export only the high-detail GLB package using LOD0 or the best available source mesh.',
     'export-medium': 'Export only the medium-detail GLB package using LOD1 or a generated decimated mesh.',
     'export-low': 'Export only the low-detail GLB package using LOD2 or a generated decimated mesh.',
-    'package': 'Render the thumbnail, copy the HDR environment, write manifest/report files, and print the index snippet.',
+    'package': 'Render the thumbnail, export the evaluated World environment, write manifest/report files, and print the index snippet.',
 }
 
 
@@ -1909,25 +1909,271 @@ def analyze_materials(mesh_objects: list[object], blend_dir: Path, report: Expor
     return analyses
 
 
+def _find_group_output_input_socket(group_node: object, output_socket: object) -> object | None:
+    node_tree = getattr(group_node, 'node_tree', None)
+    if node_tree is None:
+        return None
+
+    output_socket_identifier = getattr(output_socket, 'identifier', None)
+    output_socket_name = getattr(output_socket, 'name', None)
+    output_socket_index = next(
+        (
+            index
+            for index, socket in enumerate(getattr(group_node, 'outputs', []))
+            if socket == output_socket
+        ),
+        None,
+    )
+
+    group_outputs = [
+        node
+        for node in node_tree.nodes
+        if getattr(node, 'type', None) == 'GROUP_OUTPUT'
+    ]
+    if not group_outputs:
+        return None
+
+    active_group_outputs = [
+        node
+        for node in group_outputs
+        if getattr(node, 'is_active_output', False)
+    ]
+    candidate_outputs = active_group_outputs or group_outputs
+
+    for group_output in candidate_outputs:
+        inputs = list(getattr(group_output, 'inputs', []))
+        if output_socket_identifier:
+            matched_socket = next(
+                (
+                    socket
+                    for socket in inputs
+                    if getattr(socket, 'identifier', None) == output_socket_identifier
+                ),
+                None,
+            )
+            if matched_socket is not None:
+                return matched_socket
+        if output_socket_name:
+            matched_socket = next(
+                (
+                    socket
+                    for socket in inputs
+                    if getattr(socket, 'name', None) == output_socket_name
+                ),
+                None,
+            )
+            if matched_socket is not None:
+                return matched_socket
+        if output_socket_index is not None and output_socket_index < len(inputs):
+            return inputs[output_socket_index]
+
+    return None
+
+
+def _trace_environment_images_from_socket(
+    socket: object | None,
+    visited_sockets: set[tuple[int, str]] | None = None,
+) -> list[object]:
+    if socket is None or not getattr(socket, 'is_linked', False):
+        return []
+
+    if visited_sockets is None:
+        visited_sockets = set()
+
+    socket_owner = getattr(socket, 'node', None)
+    socket_key = (
+        int(socket_owner.as_pointer()) if socket_owner is not None else id(socket),
+        getattr(socket, 'identifier', None) or getattr(socket, 'name', '<unnamed-socket>'),
+    )
+    if socket_key in visited_sockets:
+        return []
+    visited_sockets.add(socket_key)
+
+    images: list[object] = []
+    seen_image_pointers: set[int] = set()
+
+    def append_image(image: object) -> None:
+        image_pointer = int(image.as_pointer())
+        if image_pointer not in seen_image_pointers:
+            seen_image_pointers.add(image_pointer)
+            images.append(image)
+
+    for link in socket.links:
+        node = link.from_node
+        if getattr(node, 'type', None) == 'TEX_ENVIRONMENT' and getattr(node, 'image', None) is not None:
+            append_image(node.image)
+
+        if getattr(node, 'type', None) == 'GROUP':
+            group_output_socket = _find_group_output_input_socket(node, link.from_socket)
+            for image in _trace_environment_images_from_socket(group_output_socket, visited_sockets):
+                append_image(image)
+
+        for input_socket in getattr(node, 'inputs', []):
+            for image in _trace_environment_images_from_socket(input_socket, visited_sockets):
+                append_image(image)
+
+    return images
+
+
+def _collect_world_environment_images(world: object) -> list[object]:
+    node_tree = getattr(world, 'node_tree', None)
+    if node_tree is None:
+        return []
+
+    world_outputs = [
+        node
+        for node in node_tree.nodes
+        if getattr(node, 'type', None) == 'OUTPUT_WORLD'
+    ]
+    if not world_outputs:
+        return []
+
+    active_world_outputs = [
+        node
+        for node in world_outputs
+        if getattr(node, 'is_active_output', False)
+    ]
+    candidate_outputs = active_world_outputs or world_outputs
+
+    for world_output in candidate_outputs:
+        images = _trace_environment_images_from_socket(world_output.inputs.get('Surface'))
+        if images:
+            return images
+
+    return []
+
+
 def detect_environment_image(report: ExportReport) -> Path | None:
     world = bpy.context.scene.world
     if world is None or not world.use_nodes or world.node_tree is None:
         return None
 
-    for node in world.node_tree.nodes:
-        if node.type != 'TEX_ENVIRONMENT' or getattr(node, 'image', None) is None:
-            continue
-        image_path = resolve_image_path(node.image)
+    for image in _collect_world_environment_images(world):
+        image_path = resolve_image_path(image)
         if image_path is None or not image_path.exists():
-            report.warn(f'World environment image for node "{node.name}" is missing on disk and will be skipped.')
-            return None
+            report.warn(f'World environment image "{image.name}" is missing on disk and will be skipped.')
+            continue
         if image_path.suffix.lower() not in {'.hdr', '.exr'}:
             report.warn(f'World environment image "{image_path.name}" is not HDR or EXR and will be skipped.')
-            return None
+            continue
         return image_path
 
-    report.info('No Environment Texture node was found in the active World; the runtime will fall back to /monochrome_studio_03_1k.hdr.')
+    report.info(
+        'No linked HDR or EXR Environment Texture could be traced from the active World Output; '
+        'the runtime will fall back to /monochrome_studio_03_1k.hdr.'
+    )
     return None
+
+
+def resolve_environment_render_size() -> tuple[int, int]:
+    world = bpy.context.scene.world
+    if world is None or not world.use_nodes or world.node_tree is None:
+        return 2048, 1024
+
+    for image in _collect_world_environment_images(world):
+        width = int(getattr(image, 'size', [0, 0])[0] or 0)
+        height = int(getattr(image, 'size', [0, 0])[1] or 0)
+        if width > 0 and height > 0:
+            return width, height
+
+    return 2048, 1024
+
+
+@contextmanager
+def hide_scene_objects_for_world_render(excluded_objects: set[object] | None = None) -> object:
+    excluded = excluded_objects or set()
+    previous_hide_render: list[tuple[object, bool]] = []
+    try:
+        for object_ in bpy.context.scene.objects:
+            if object_ in excluded:
+                continue
+            previous_hide_render.append((object_, object_.hide_render))
+            object_.hide_render = True
+        yield
+    finally:
+        for object_, hide_render in reversed(previous_hide_render):
+            object_.hide_render = hide_render
+
+
+def render_environment_image(paths: ExportPaths, report: ExportReport) -> str | None:
+    world = bpy.context.scene.world
+    if world is None or not world.use_nodes or world.node_tree is None:
+        return None
+
+    target_path = paths.hdr_dir / f'{paths.package_root.name}_environment.exr'
+    width, height = resolve_environment_render_size()
+    scene = bpy.context.scene
+    render = scene.render
+    previous_camera = scene.camera
+    previous_settings = {
+        'filepath': render.filepath,
+        'image_settings_file_format': render.image_settings.file_format,
+        'image_settings_color_mode': render.image_settings.color_mode,
+        'image_settings_color_depth': getattr(render.image_settings, 'color_depth', None),
+        'image_settings_exr_codec': getattr(render.image_settings, 'exr_codec', None),
+        'resolution_x': render.resolution_x,
+        'resolution_y': render.resolution_y,
+        'resolution_percentage': render.resolution_percentage,
+        'film_transparent': render.film_transparent,
+        'use_compositing': getattr(render, 'use_compositing', None),
+        'use_sequencer': getattr(render, 'use_sequencer', None),
+    }
+
+    temp_camera_data = bpy.data.cameras.new(name='__TESTBED_WORLD_EXPORT_CAMERA')
+    temp_camera = bpy.data.objects.new('__TESTBED_WORLD_EXPORT_CAMERA', temp_camera_data)
+    scene.collection.objects.link(temp_camera)
+    scene.camera = temp_camera
+
+    temp_camera.location = (0.0, 0.0, 0.0)
+    temp_camera.rotation_euler = (0.0, 0.0, 0.0)
+    temp_camera_data.type = 'PANO'
+    temp_camera_data.panorama_type = 'EQUIRECTANGULAR'
+
+    try:
+        render.filepath = str(target_path)
+        render.image_settings.file_format = 'OPEN_EXR'
+        render.image_settings.color_mode = 'RGB'
+        if hasattr(render.image_settings, 'color_depth'):
+            render.image_settings.color_depth = '32'
+        if hasattr(render.image_settings, 'exr_codec'):
+            render.image_settings.exr_codec = 'ZIP'
+        render.resolution_x = width
+        render.resolution_y = height
+        render.resolution_percentage = 100
+        render.film_transparent = False
+        if hasattr(render, 'use_compositing'):
+            render.use_compositing = False
+        if hasattr(render, 'use_sequencer'):
+            render.use_sequencer = False
+
+        with hide_scene_objects_for_world_render({temp_camera}):
+            bpy.ops.render.render(write_still=True)
+
+        report.summary(f'Rendered evaluated World environment to {target_path}')
+        return relative_manifest_path(target_path, paths.manifest_path)
+    finally:
+        scene.camera = previous_camera
+        render.filepath = previous_settings['filepath']
+        render.image_settings.file_format = previous_settings['image_settings_file_format']
+        render.image_settings.color_mode = previous_settings['image_settings_color_mode']
+        if previous_settings['image_settings_color_depth'] is not None:
+            render.image_settings.color_depth = previous_settings['image_settings_color_depth']
+        if previous_settings['image_settings_exr_codec'] is not None:
+            render.image_settings.exr_codec = previous_settings['image_settings_exr_codec']
+        render.resolution_x = previous_settings['resolution_x']
+        render.resolution_y = previous_settings['resolution_y']
+        render.resolution_percentage = previous_settings['resolution_percentage']
+        render.film_transparent = previous_settings['film_transparent']
+        if previous_settings['use_compositing'] is not None:
+            render.use_compositing = previous_settings['use_compositing']
+        if previous_settings['use_sequencer'] is not None:
+            render.use_sequencer = previous_settings['use_sequencer']
+        try:
+            scene.collection.objects.unlink(temp_camera)
+        except RuntimeError:
+            pass
+        bpy.data.objects.remove(temp_camera, do_unlink=True)
+        bpy.data.cameras.remove(temp_camera_data)
 
 
 def copy_environment_image(environment_path: Path | None, paths: ExportPaths, report: ExportReport) -> str | None:
@@ -2902,8 +3148,17 @@ def execute_export(config: ExportConfig) -> dict[str, object]:
             paths = stage_state['paths']
             validate_packaging_inputs(paths)
             render_thumbnail(paths, config.thumbnail_size, report)
-            environment_source = detect_environment_image(report)
-            environment_manifest_path = copy_environment_image(environment_source, paths, report)
+            environment_manifest_path = None
+            try:
+                environment_manifest_path = render_environment_image(paths, report)
+            except Exception as error:
+                report.warn(
+                    'Failed to render the evaluated World environment; falling back to the traced source HDR/EXR. '
+                    f'Detail: {error}'
+                )
+                report.log_traceback()
+                environment_source = detect_environment_image(report)
+                environment_manifest_path = copy_environment_image(environment_source, paths, report)
             manifest = build_manifest(
                 stage_state['collection_id'],
                 stage_state['display_name'],
